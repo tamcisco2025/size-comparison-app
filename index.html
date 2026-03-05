@@ -16,11 +16,11 @@
         </header>
 
         <main class="main-content">
-            <!-- LEFT: Upload -->
+            <!-- LEFT -->
             <section class="upload-section">
                 <div class="card">
                     <h2><i class="fas fa-upload"></i> Upload Size Chart Images</h2>
-                    
+
                     <div class="upload-options">
                         <div class="option-tabs">
                             <button class="tab-btn active" data-tab="file"><i class="fas fa-file-image"></i> Upload Files</button>
@@ -42,8 +42,8 @@
                         <div class="tab-content" id="url-tab">
                             <div class="url-inputs" id="url-inputs">
                                 <div class="url-input-group">
-                                    <input type="text" class="url-input" placeholder="Nhập URL ảnh (VD: https://cf.cjdropshipping.com/...)">
-                                    <button class="btn-remove-url" title="Xóa"><i class="fas fa-times"></i></button>
+                                    <input type="text" class="url-input" placeholder="URL ảnh (VD: https://cf.cjdropshipping.com/...)">
+                                    <button class="btn-remove-url"><i class="fas fa-times"></i></button>
                                 </div>
                             </div>
                             <div class="url-actions">
@@ -53,28 +53,21 @@
                         </div>
                     </div>
 
-                    <!-- Settings -->
                     <div class="settings-section">
                         <h3><i class="fas fa-cog"></i> Cài đặt</h3>
                         <div class="setting-item">
-                            <label for="tolerance">Dung sai cho phép:</label>
+                            <label for="tolerance">Dung sai thêm (ngoài range chuẩn):</label>
                             <div class="tolerance-input">
                                 <input type="number" id="tolerance" value="2" min="0" max="10" step="0.5">
                                 <span>cm (≈ <span id="tolerance-inch">0.79</span>")</span>
                             </div>
-                            <small>
-                                <strong>Logic:</strong> Ảnh upload ≥ Chuẩn US → MATCH | Ảnh upload &lt; Chuẩn US → UNMATCH
-                            </small>
+                            <small>Ảnh upload ≥ MIN của chuẩn US → <strong style="color:#10b981">MATCH</strong> | Ảnh upload &lt; MIN → <strong style="color:#ef4444">UNMATCH</strong></small>
                         </div>
                         <div class="setting-item">
-                            <label>
-                                <input type="checkbox" id="enhance-image" checked>
-                                <span>Tự động làm rõ ảnh mờ</span>
-                            </label>
+                            <label><input type="checkbox" id="enhance-image" checked> <span>Tự động làm rõ ảnh mờ</span></label>
                         </div>
                     </div>
 
-                    <!-- Preview -->
                     <div class="preview-section" id="preview-section">
                         <h3>
                             <span><i class="fas fa-images"></i> Ảnh đã chọn (<span id="image-count">0</span>/5)</span>
@@ -89,27 +82,39 @@
                 </div>
             </section>
 
-            <!-- RIGHT: Standard + Results -->
+            <!-- RIGHT -->
             <section class="results-section">
-                <!-- Standard Table -->
                 <div class="card">
-                    <h2><i class="fas fa-ruler"></i> Tiêu chuẩn US Size (WohWooh)</h2>
+                    <h2><i class="fas fa-ruler"></i> Standard Women's Measurements (US Size)</h2>
                     <p class="size-note">
                         <i class="fas fa-info-circle"></i>
-                        Bảng size chính xác từ 
-                        <a href="https://wohwooh.com/pages/size-guide" target="_blank">wohwooh.com/pages/size-guide</a>
+                        Chính xác từ <a href="https://wohwooh.com/pages/size-guide" target="_blank">wohwooh.com/pages/size-guide</a>
                     </p>
 
-                    <div class="standard-table-container" id="standard-tables">
-                        <!-- Tables will be loaded by JS -->
+                    <div class="standard-table-container">
+                        <table class="standard-table" id="standard-table">
+                            <thead>
+                                <tr>
+                                    <th>SIZE</th>
+                                    <th>BUST<br><small>(Ngực)</small></th>
+                                    <th>WAIST<br><small>(Eo)</small></th>
+                                    <th>HIPS<br><small>(Mông)</small></th>
+                                    <th>SLEEVE<br><small>(Tay áo)</small></th>
+                                </tr>
+                            </thead>
+                            <tbody id="standard-tbody">
+                                <!-- Loaded by JS -->
+                            </tbody>
+                        </table>
                     </div>
 
                     <div class="size-info">
                         <p><strong>Quy tắc so sánh:</strong></p>
                         <ul>
-                            <li>Ảnh upload ≥ Chuẩn US → <strong class="text-match">✓ MATCH</strong></li>
-                            <li>Ảnh upload &lt; Chuẩn US → <strong class="text-unmatch">✗ UNMATCH</strong></li>
-                            <li>Nếu ảnh có cả US/UK → chỉ lấy số đo US</li>
+                            <li>Mỗi số đo có khoảng MIN - MAX (VD: Bust S = 33" - 35")</li>
+                            <li>Ảnh upload ≥ MIN → <strong class="text-match">✓ MATCH</strong> (đủ hoặc thừa)</li>
+                            <li>Ảnh upload &lt; MIN → <strong class="text-unmatch">✗ UNMATCH</strong> (thiếu)</li>
+                            <li>Nếu ảnh có US/UK → chỉ lấy số đo US</li>
                             <li>Đơn vị: <strong>Inch</strong> (1 inch = 2.54 cm)</li>
                         </ul>
                     </div>
@@ -118,7 +123,6 @@
                     </a>
                 </div>
 
-                <!-- Results -->
                 <div class="card results-card" id="results-card" style="display:none;">
                     <h2><i class="fas fa-chart-bar"></i> Kết Quả So Sánh</h2>
                     <div class="results-summary" id="results-summary"></div>
@@ -128,11 +132,9 @@
         </main>
 
         <footer class="footer">
-            Size Comparison Tool v3.0 | 
-            <a href="https://wohwooh.com/pages/size-guide" target="_blank">WohWooh Size Guide</a>
+            Size Comparison Tool v3.1 | <a href="https://wohwooh.com/pages/size-guide" target="_blank">WohWooh Size Guide</a>
         </footer>
 
-        <!-- Loading -->
         <div class="loading-overlay" id="loading-overlay">
             <div class="loading-content">
                 <div class="spinner"></div>
@@ -144,7 +146,6 @@
     </div>
 
     <div class="toast-container" id="toast-container"></div>
-
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script src="js/app.js"></script>
 </body>
