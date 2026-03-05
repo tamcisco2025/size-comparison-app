@@ -1,67 +1,66 @@
 /**
- * Size Comparison Tool v3.0
- * Tiêu chuẩn: https://wohwooh.com/pages/size-guide
- * 
- * LOGIC:
- * - Ảnh upload >= Chuẩn US → MATCH
- * - Ảnh upload <  Chuẩn US → UNMATCH
- * - Chỉ so sánh US (bỏ qua UK nếu có)
- * - Sizes: S, M, L, XL only
+ * Size Comparison Tool v3.1
+ * Standard: https://wohwooh.com/pages/size-guide
+ *
+ * STANDARD WOMEN'S MEASUREMENTS (INCHES):
+ * SIZE        | BUST       | WAIST      | HIPS       | SLEEVE
+ * S           | 33" - 35"  | 25" - 27"  | 35" - 37"  | 23.5" - 24"
+ * M           | 36" - 37"  | 28" - 29"  | 38" - 39"  | 24.0" - 24.5"
+ * L           | 38" - 40"  | 30" - 32"  | 40" - 42"  | 24.5" - 25.0"
+ * XL          | 41" - 43"  | 33" - 35"  | 43" - 45"  | 25.0" - 25.5"
+ *
+ * MATCH LOGIC:
+ * - Upload value >= MIN of standard range → MATCH (đủ hoặc thừa)
+ * - Upload value <  MIN of standard range → UNMATCH (thiếu)
  */
 
 // ==================================================================
-// US SIZE STANDARD - Chính xác từ https://wohwooh.com/pages/size-guide
-// Thứ tự: Bust/Chest, Waist, Hips, Length (theo đúng WohWooh)
+// WOHWOOH US SIZE STANDARD - CHÍNH XÁC 100%
 // ==================================================================
 const WOHWOOH_STANDARD = {
-    // TOPS - T-Shirt, Hoodie, Sweatshirt (Unisex)
-    tops: {
-        title: "Tops (T-Shirt, Hoodie, Sweatshirt)",
-        headers: ["Size", "Length", "½ Chest", "Sleeve Length"],
-        headersVi: ["Size", "Dài áo", "½ Ngực", "Dài tay"],
-        keys: ["length", "half_chest", "sleeve"],
-        sizes: {
-            "S":  { length: 28,   half_chest: 20,   sleeve: 8.26  },
-            "M":  { length: 29,   half_chest: 21,   sleeve: 8.66  },
-            "L":  { length: 30,   half_chest: 23,   sleeve: 9.06  },
-            "XL": { length: 31,   half_chest: 25,   sleeve: 9.45  }
-        }
+    // Thứ tự: BUST, WAIST, HIPS, SLEEVE (đúng theo website)
+    keys: ["bust", "waist", "hips", "sleeve"],
+    labels: {
+        bust:   "BUST (Ngực)",
+        waist:  "WAIST (Eo)",
+        hips:   "HIPS (Mông)",
+        sleeve: "SLEEVE (Tay áo)"
     },
-    // Full body measurements (Bust, Waist, Hips)
-    body: {
-        title: "Body Measurements (Ngực, Eo, Mông)",
-        headers: ["Size", "Bust/Chest", "Waist", "Hips"],
-        headersVi: ["Size", "Ngực", "Eo", "Mông"],
-        keys: ["bust", "waist", "hips"],
-        sizes: {
-            "S":  { bust: 36,  waist: 28,  hips: 38  },
-            "M":  { bust: 40,  waist: 32,  hips: 42  },
-            "L":  { bust: 44,  waist: 36,  hips: 46  },
-            "XL": { bust: 48,  waist: 40,  hips: 50  }
+    sizes: {
+        "S": {
+            bust:   { min: 33, max: 35 },
+            waist:  { min: 25, max: 27 },
+            hips:   { min: 35, max: 37 },
+            sleeve: { min: 23.5, max: 24 }
+        },
+        "M": {
+            bust:   { min: 36, max: 37 },
+            waist:  { min: 28, max: 29 },
+            hips:   { min: 38, max: 39 },
+            sleeve: { min: 24, max: 24.5 }
+        },
+        "L": {
+            bust:   { min: 38, max: 40 },
+            waist:  { min: 30, max: 32 },
+            hips:   { min: 40, max: 42 },
+            sleeve: { min: 24.5, max: 25 }
+        },
+        "XL": {
+            bust:   { min: 41, max: 43 },
+            waist:  { min: 33, max: 35 },
+            hips:   { min: 43, max: 45 },
+            sleeve: { min: 25, max: 25.5 }
         }
     }
 };
 
-// All measurement labels
-const LABELS = {
-    length: "Length (Dài)",
-    half_chest: "½ Chest (½ Ngực)",
-    sleeve: "Sleeve (Tay áo)",
-    bust: "Bust/Chest (Ngực)",
-    waist: "Waist (Eo)",
-    hips: "Hips (Mông)",
-    chest: "Chest (Ngực)",
-    width: "Width (Rộng)"
-};
-
-// Valid sizes only
 const VALID_SIZES = ["S", "M", "L", "XL"];
 
 // ==================================================================
 // GLOBAL
 // ==================================================================
 let uploadedImages = [];
-let tolerance = 2;
+let tolerance = 2; // cm
 let isProcessing = false;
 
 const $ = s => document.querySelector(s);
@@ -76,7 +75,7 @@ const DOM = {
     previewSection: $('#preview-section'), previewGrid: $('#preview-grid'),
     imageCount: $('#image-count'), clearAllBtn: $('#clear-all-btn'),
     compareBtn: $('#compare-btn'),
-    standardTables: $('#standard-tables'),
+    standardTbody: $('#standard-tbody'),
     resultsCard: $('#results-card'), resultsSummary: $('#results-summary'),
     resultsContainer: $('#results-container'),
     loadingOverlay: $('#loading-overlay'), loadingText: $('#loading-text'),
@@ -88,7 +87,7 @@ const DOM = {
 // INIT
 // ==================================================================
 document.addEventListener('DOMContentLoaded', () => {
-    loadStandardTables();
+    loadStandardTable();
     initTabs();
     initDropzone();
     initUrlInputs();
@@ -98,39 +97,23 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ==================================================================
-// STANDARD TABLES
+// STANDARD TABLE - Hiển thị đúng range MIN - MAX
 // ==================================================================
-function loadStandardTables() {
-    let html = '';
-    
-    // Tops table
-    html += buildStandardTable(WOHWOOH_STANDARD.tops);
-    // Body table  
-    html += buildStandardTable(WOHWOOH_STANDARD.body);
-    
-    DOM.standardTables.innerHTML = html;
-}
+function loadStandardTable() {
+    const tbody = DOM.standardTbody;
+    tbody.innerHTML = '';
 
-function buildStandardTable(category) {
-    let html = `<div class="standard-table-title"><i class="fas fa-tshirt"></i> ${category.title}</div>`;
-    html += '<table class="standard-table"><thead><tr>';
-    
-    category.headers.forEach((h, i) => {
-        html += `<th>${h}<br><small>${category.headersVi[i]}</small></th>`;
+    Object.entries(WOHWOOH_STANDARD.sizes).forEach(([size, data]) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><strong>${size}</strong></td>
+            <td>${data.bust.min}" - ${data.bust.max}"</td>
+            <td>${data.waist.min}" - ${data.waist.max}"</td>
+            <td>${data.hips.min}" - ${data.hips.max}"</td>
+            <td>${data.sleeve.min}" - ${data.sleeve.max}"</td>
+        `;
+        tbody.appendChild(row);
     });
-    
-    html += '</tr></thead><tbody>';
-    
-    Object.entries(category.sizes).forEach(([size, data]) => {
-        html += `<tr><td><strong>${size}</strong></td>`;
-        category.keys.forEach(key => {
-            html += `<td>${data[key]}"</td>`;
-        });
-        html += '</tr>';
-    });
-    
-    html += '</tbody></table>';
-    return html;
 }
 
 // ==================================================================
@@ -141,7 +124,9 @@ function initTabs() {
         btn.addEventListener('click', () => {
             DOM.tabBtns.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            DOM.tabContents.forEach(c => c.classList.toggle('active', c.id === `${btn.dataset.tab}-tab`));
+            DOM.tabContents.forEach(c => {
+                c.classList.toggle('active', c.id === `${btn.dataset.tab}-tab`);
+            });
         });
     });
 }
@@ -151,27 +136,45 @@ function initTabs() {
 // ==================================================================
 function initDropzone() {
     const dz = DOM.dropzone;
-    ['dragenter','dragover','dragleave','drop'].forEach(e => dz.addEventListener(e, ev => { ev.preventDefault(); ev.stopPropagation(); }));
-    ['dragenter','dragover'].forEach(e => dz.addEventListener(e, () => dz.classList.add('dragover')));
-    ['dragleave','drop'].forEach(e => dz.addEventListener(e, () => dz.classList.remove('dragover')));
-    dz.addEventListener('drop', e => e.dataTransfer.files.length && handleFiles(e.dataTransfer.files));
-    dz.addEventListener('click', e => { if(!e.target.closest('.file-label')) DOM.fileInput.click(); });
-    DOM.fileInput.addEventListener('change', e => { e.target.files.length && handleFiles(e.target.files); e.target.value=''; });
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(e =>
+        dz.addEventListener(e, ev => { ev.preventDefault(); ev.stopPropagation(); })
+    );
+    ['dragenter', 'dragover'].forEach(e =>
+        dz.addEventListener(e, () => dz.classList.add('dragover'))
+    );
+    ['dragleave', 'drop'].forEach(e =>
+        dz.addEventListener(e, () => dz.classList.remove('dragover'))
+    );
+    dz.addEventListener('drop', e => {
+        if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+    });
+    dz.addEventListener('click', e => {
+        if (!e.target.closest('.file-label')) DOM.fileInput.click();
+    });
+    DOM.fileInput.addEventListener('change', e => {
+        if (e.target.files.length) handleFiles(e.target.files);
+        e.target.value = '';
+    });
 }
 
 async function handleFiles(files) {
     const valid = Array.from(files).filter(f => f.type.startsWith('image/'));
     if (!valid.length) return showToast('Chọn file ảnh!', 'warning');
-    
+
     const remain = 5 - uploadedImages.length;
     if (remain <= 0) return showToast('Đã đủ 5 ảnh!', 'warning');
-    
+
     const toAdd = valid.slice(0, remain);
     if (valid.length > remain) showToast(`Chỉ thêm ${remain} ảnh nữa.`, 'warning');
 
     const promises = toAdd.map((file, i) => new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = e => resolve({ id: `f_${Date.now()}_${i}`, type:'file', name: file.name, src: e.target.result, size: file.size });
+        reader.onload = e => resolve({
+            id: `f_${Date.now()}_${i}`,
+            name: file.name,
+            src: e.target.result,
+            size: file.size
+        });
         reader.onerror = reject;
         reader.readAsDataURL(file);
     }));
@@ -185,17 +188,17 @@ async function handleFiles(files) {
         });
         updatePreview();
         showToast(`Thêm ${results.length} ảnh! (${uploadedImages.length}/5)`, 'success');
-    } catch(e) {
+    } catch (e) {
         showToast('Lỗi đọc file!', 'error');
     }
 }
 
 // ==================================================================
-// URL
+// URL INPUTS
 // ==================================================================
 function initUrlInputs() {
     DOM.addUrlBtn.addEventListener('click', () => {
-        if (DOM.urlInputs.children.length >= 5) return showToast('Tối đa 5 URL!', 'warning');
+        if (DOM.urlInputs.children.length >= 5) return showToast('Tối đa 5!', 'warning');
         const g = document.createElement('div');
         g.className = 'url-input-group';
         g.innerHTML = `<input type="text" class="url-input" placeholder="URL ảnh..."><button class="btn-remove-url"><i class="fas fa-times"></i></button>`;
@@ -211,21 +214,28 @@ function initUrlInputs() {
 
     DOM.loadUrlsBtn.addEventListener('click', async () => {
         const urls = Array.from(DOM.urlInputs.querySelectorAll('.url-input'))
-            .map(i => i.value.trim()).filter(u => { try { new URL(u); return true; } catch { return false; } });
-        
+            .map(i => i.value.trim())
+            .filter(u => { try { new URL(u); return true; } catch { return false; } });
         if (!urls.length) return showToast('Nhập URL hợp lệ!', 'warning');
+
         const remain = 5 - uploadedImages.length;
-        if (remain <= 0) return showToast('Đã đủ 5 ảnh!', 'warning');
+        if (remain <= 0) return showToast('Đã đủ 5!', 'warning');
 
         showLoading('Đang tải ảnh...');
         let ok = 0;
         for (let i = 0; i < Math.min(urls.length, remain); i++) {
             try {
-                updateLoadingText(`Tải ảnh ${i+1}/${urls.length}...`);
+                updateLoadingText(`Tải ${i + 1}/${urls.length}...`);
                 const src = await fetchImg(urls[i]);
-                uploadedImages.push({ id:`u_${Date.now()}_${i}`, type:'url', name: urls[i].split('/').pop()||`Img${i+1}`, src });
+                uploadedImages.push({
+                    id: `u_${Date.now()}_${i}`,
+                    name: urls[i].split('/').pop() || `Img${i + 1}`,
+                    src
+                });
                 ok++;
-            } catch(e) { showToast(`Lỗi tải: ${urls[i].substring(0,30)}...`, 'error'); }
+            } catch (e) {
+                showToast(`Lỗi: ${urls[i].substring(0, 30)}...`, 'error');
+            }
         }
         hideLoading();
         updatePreview();
@@ -235,12 +245,26 @@ function initUrlInputs() {
 
 function fetchImg(url) {
     return new Promise((res, rej) => {
-        const img = new Image(); img.crossOrigin='Anonymous';
+        const img = new Image();
+        img.crossOrigin = 'Anonymous';
         const t = setTimeout(() => rej('Timeout'), 15000);
-        img.onload = () => { clearTimeout(t); const c=document.createElement('canvas'); c.width=img.width; c.height=img.height; c.getContext('2d').drawImage(img,0,0); res(c.toDataURL('image/png')); };
-        img.onerror = () => { clearTimeout(t);
-            const p = new Image(); p.crossOrigin='Anonymous';
-            p.onload = () => { const c=document.createElement('canvas'); c.width=p.width; c.height=p.height; c.getContext('2d').drawImage(p,0,0); res(c.toDataURL('image/png')); };
+        img.onload = () => {
+            clearTimeout(t);
+            const c = document.createElement('canvas');
+            c.width = img.width; c.height = img.height;
+            c.getContext('2d').drawImage(img, 0, 0);
+            res(c.toDataURL('image/png'));
+        };
+        img.onerror = () => {
+            clearTimeout(t);
+            const p = new Image();
+            p.crossOrigin = 'Anonymous';
+            p.onload = () => {
+                const c = document.createElement('canvas');
+                c.width = p.width; c.height = p.height;
+                c.getContext('2d').drawImage(p, 0, 0);
+                res(c.toDataURL('image/png'));
+            };
             p.onerror = () => rej('Failed');
             p.src = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
         };
@@ -254,14 +278,14 @@ function fetchImg(url) {
 function updatePreview() {
     DOM.imageCount.textContent = uploadedImages.length;
     DOM.previewGrid.innerHTML = '';
-    
+
     if (!uploadedImages.length) {
         DOM.previewSection.style.display = 'none';
         DOM.compareBtn.disabled = true;
         DOM.compareBtn.innerHTML = '<i class="fas fa-balance-scale"></i> So Sánh Kích Thước';
         return;
     }
-    
+
     DOM.previewSection.style.display = 'block';
     DOM.previewSection.classList.add('show');
     DOM.compareBtn.disabled = false;
@@ -270,13 +294,21 @@ function updatePreview() {
     uploadedImages.forEach((img, i) => {
         const d = document.createElement('div');
         d.className = 'preview-item';
-        d.innerHTML = `<img src="${img.src}" alt="${img.name}"><button class="remove-btn" onclick="removeImage(${i})"><i class="fas fa-times"></i></button><span class="image-index">#${i+1}</span>`;
+        d.innerHTML = `
+            <img src="${img.src}" alt="${img.name}">
+            <button class="remove-btn" onclick="removeImage(${i})"><i class="fas fa-times"></i></button>
+            <span class="image-index">#${i + 1}</span>
+        `;
         DOM.previewGrid.appendChild(d);
     });
 }
 
-window.removeImage = i => { uploadedImages.splice(i,1); updatePreview(); showToast('Đã xóa!','info'); };
-window.clearAllImages = () => { uploadedImages=[]; updatePreview(); DOM.resultsCard.style.display='none'; showToast('Đã xóa tất cả!','info'); };
+window.removeImage = i => { uploadedImages.splice(i, 1); updatePreview(); };
+window.clearAllImages = () => {
+    uploadedImages = [];
+    updatePreview();
+    DOM.resultsCard.style.display = 'none';
+};
 
 // ==================================================================
 // SETTINGS & BUTTONS
@@ -294,7 +326,7 @@ function initButtons() {
 }
 
 // ==================================================================
-// COMPARISON ENGINE
+// MAIN COMPARISON
 // ==================================================================
 async function runComparison() {
     if (!uploadedImages.length) return showToast('Upload ít nhất 1 ảnh!', 'error');
@@ -312,19 +344,19 @@ async function runComparison() {
 
     for (let i = 0; i < total; i++) {
         const num = i + 1;
-        updateProgress((i/total)*100);
+        updateProgress((i / total) * 100);
         updateLoadingText(`Xử lý ảnh ${num}/${total}...`);
         updateLoadingDetail(uploadedImages[i].name);
 
         try {
-            const result = await processOneImage(uploadedImages[i], num, total);
+            const result = await processImage(uploadedImages[i], num, total);
             result.status === 'match' ? matchCount++ : unmatchCount++;
             displayResult(result, num);
-        } catch(e) {
+        } catch (e) {
             unmatchCount++;
             displayError(uploadedImages[i], num, e.message);
         }
-        updateProgress(((i+1)/total)*100);
+        updateProgress(((i + 1) / total) * 100);
     }
 
     displaySummary(total, matchCount, unmatchCount);
@@ -337,63 +369,77 @@ async function runComparison() {
     else showToast(`${matchCount} MATCH, ${unmatchCount} UNMATCH`, 'info');
 }
 
-async function processOneImage(imageData, current, total) {
+// ==================================================================
+// IMAGE PROCESSING
+// ==================================================================
+async function processImage(imgData, current, total) {
     // Load
     const img = await new Promise((res, rej) => {
-        const i = new Image(); i.crossOrigin='Anonymous';
-        i.onload = () => res(i); i.onerror = () => rej(new Error('Load failed'));
-        i.src = imageData.src;
+        const i = new Image();
+        i.crossOrigin = 'Anonymous';
+        i.onload = () => res(i);
+        i.onerror = () => rej(new Error('Load failed'));
+        i.src = imgData.src;
     });
 
-    // Enhance
-    let canvas;
+    // Create multiple versions for OCR
+    const canvases = [];
+
+    // Version 1: Enhanced (high contrast B&W)
     if (DOM.enhanceCheckbox.checked) {
         updateLoadingDetail('Làm rõ ảnh...');
-        canvas = enhanceImage(img);
-    } else {
-        canvas = document.createElement('canvas');
-        canvas.width = img.width; canvas.height = img.height;
-        canvas.getContext('2d').drawImage(img, 0, 0);
+        canvases.push(enhanceImage(img, 1.6, 130));
+        canvases.push(enhanceImage(img, 1.3, 120)); // Softer threshold
     }
 
-    // OCR - Run TWICE with different settings for better accuracy
-    updateLoadingDetail('OCR lần 1...');
-    const text1 = await ocrScan(canvas, current, total);
-    
-    // Try without enhancement too
-    updateLoadingDetail('OCR lần 2 (ảnh gốc)...');
-    const origCanvas = document.createElement('canvas');
-    const scale2 = Math.max(2, 1800 / Math.max(img.width, img.height));
-    origCanvas.width = img.width * scale2;
-    origCanvas.height = img.height * scale2;
-    const ctx2 = origCanvas.getContext('2d');
-    ctx2.imageSmoothingEnabled = true;
-    ctx2.imageSmoothingQuality = 'high';
-    ctx2.drawImage(img, 0, 0, origCanvas.width, origCanvas.height);
-    
-    const text2 = await ocrScan(origCanvas, current, total);
+    // Version 2: Scaled original (grayscale)
+    const scaled = scaleImage(img);
+    canvases.push(scaled);
 
-    // Combine both OCR results
-    const combinedText = text1 + '\n---SCAN2---\n' + text2;
-    console.log('Combined OCR text:', combinedText.substring(0, 600));
+    // OCR on all versions, combine results
+    let allText = '';
+    for (let c = 0; c < canvases.length; c++) {
+        updateLoadingDetail(`OCR scan ${c + 1}/${canvases.length}...`);
+        try {
+            const text = await ocrScan(canvases[c], current, total);
+            allText += text + '\n===NEXT_SCAN===\n';
+        } catch (e) {
+            console.error('OCR scan failed:', e);
+        }
+    }
+
+    console.log('=== ALL OCR TEXT ===\n', allText.substring(0, 800));
 
     // Parse
-    updateLoadingDetail('Phân tích dữ liệu...');
-    const measurements = parseOCRText(combinedText);
+    updateLoadingDetail('Phân tích...');
+    const measurements = parseAllText(allText);
+    console.log('Parsed measurements:', JSON.stringify(measurements, null, 2));
 
     // Compare
     const comparison = compareMeasurements(measurements);
 
     return {
-        image: imageData,
-        text: combinedText,
+        image: imgData,
+        text: allText,
         measurements,
         comparison,
         status: comparison.overallMatch ? 'match' : 'unmatch'
     };
 }
 
-function enhanceImage(img) {
+function scaleImage(img) {
+    const canvas = document.createElement('canvas');
+    const scale = Math.max(2, Math.min(3, 2000 / Math.max(img.width, img.height)));
+    canvas.width = img.width * scale;
+    canvas.height = img.height * scale;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas;
+}
+
+function enhanceImage(img, contrast, threshold) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     const scale = Math.max(2, Math.min(3, 2000 / Math.max(img.width, img.height)));
@@ -406,10 +452,10 @@ function enhanceImage(img) {
     const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const d = id.data;
     for (let i = 0; i < d.length; i += 4) {
-        let g = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
-        g = Math.max(0, Math.min(255, ((g-128)*1.6)+128));
-        const v = g > 130 ? 255 : 0;
-        d[i] = d[i+1] = d[i+2] = v;
+        let g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        g = Math.max(0, Math.min(255, ((g - 128) * contrast) + 128));
+        const v = g > threshold ? 255 : 0;
+        d[i] = d[i + 1] = d[i + 2] = v;
     }
     ctx.putImageData(id, 0, 0);
     return canvas;
@@ -419,7 +465,7 @@ async function ocrScan(canvas, current, total) {
     const result = await Tesseract.recognize(canvas, 'eng', {
         logger: m => {
             if (m.status === 'recognizing text') {
-                updateProgress(((current-1)/total)*100 + (m.progress*40)/total);
+                updateProgress(((current - 1) / total) * 100 + (m.progress * 30) / total);
             }
         }
     });
@@ -427,201 +473,174 @@ async function ocrScan(canvas, current, total) {
 }
 
 // ==================================================================
-// TEXT PARSING - Improved to catch ALL sizes including S
+// TEXT PARSING - Tìm tất cả sizes S, M, L, XL
 // ==================================================================
-function parseOCRText(rawText) {
+function parseAllText(rawText) {
     const results = {};
-    
+
     // Detect unit
     const lower = rawText.toLowerCase();
-    const isCm = lower.includes('cm') || lower.includes('厘米') || lower.includes('centimeter') || lower.includes('centimet');
-    console.log('Unit detected:', isCm ? 'CM' : 'INCH');
+    const isCm = lower.includes('cm') || lower.includes('厘米') || lower.includes('centimeter');
+    const unit = isCm ? 'cm' : 'inch';
+    console.log('Unit:', unit);
 
-    // Clean text
+    // Clean
     const text = rawText
         .replace(/\|/g, ' ')
         .replace(/\t/g, ' ')
+        .replace(/[""]/g, '"')
+        .replace(/[']/g, "'")
         .replace(/,/g, '.')
-        .replace(/\s+/g, ' ');
+        .replace(/—|-{2,}/g, '-');
 
-    // Split into lines
     const lines = text.split('\n').map(l => l.trim()).filter(l => l);
 
-    // Strategy 1: Line-by-line - find lines containing sizes
-    for (const line of lines) {
-        // Skip lines with UK
-        if (/\bUK\b/i.test(line) && !/\bUS\b/i.test(line)) continue;
-        
-        // Find size in line
-        const sizeMatch = line.match(/\b(S|M|L|XL)\b/i);
-        if (!sizeMatch) continue;
-        
-        const size = sizeMatch[1].toUpperCase();
-        if (!VALID_SIZES.includes(size)) continue;
-        
-        // Don't overwrite if already found
-        if (results[size] && results[size]._numberCount > 2) continue;
+    // Check if US/UK format - skip UK lines
+    const hasUSUK = lower.includes('us/uk') || lower.includes('us / uk') ||
+        (lower.includes('us') && lower.includes('uk'));
 
-        // Extract all numbers from this line
-        const nums = [];
-        const numPattern = /(\d+\.?\d*)/g;
-        let nm;
-        while ((nm = numPattern.exec(line)) !== null) {
-            const val = parseFloat(nm[1]);
-            // Filter reasonable measurement values
-            if (val >= 5 && val <= 90) {
-                nums.push(val);
-            }
+    // Parse each line
+    for (const line of lines) {
+        // Skip UK-only lines
+        if (hasUSUK) {
+            if (/\bUK\b/i.test(line) && !/\bUS\b/i.test(line)) continue;
         }
 
-        if (nums.length >= 2) {
+        // Find size in line
+        for (const size of VALID_SIZES) {
+            // Match size but avoid matching S in words like "STANDARD", "SLEEVE", "SIZE", "SMALL"
+            // Match standalone S, M, L, XL
+            const sizePatterns = [
+                new RegExp(`\\b${size}\\b(?!\\w)`, 'i'),
+                new RegExp(`^${size}\\s`, 'i'),
+                new RegExp(`\\s${size}\\s`, 'i'),
+                new RegExp(`\\(${size}\\)`, 'i')
+            ];
+
+            // For "S", be more careful
+            let found = false;
+            if (size === 'S') {
+                // Only match standalone S, not S in words
+                found = /(?:^|\s|[|(])S(?:\s|$|[|)])/i.test(line) ||
+                    /\bSmall\b/i.test(line) ||
+                    /\bS\b\s*\d/i.test(line);
+            } else if (size === 'M') {
+                found = /(?:^|\s|[|(])M(?:\s|$|[|)])/i.test(line) ||
+                    /\bMedium\b/i.test(line) ||
+                    /\bM\b\s*\d/i.test(line);
+            } else if (size === 'L') {
+                found = /(?:^|\s|[|(])L(?:\s|$|[|)])/i.test(line) ||
+                    /\bLarge\b/i.test(line) ||
+                    /\bL\b\s*\d/i.test(line);
+            } else if (size === 'XL') {
+                found = /\bXL\b/i.test(line) || /\bX-Large\b/i.test(line);
+            }
+
+            if (!found) continue;
+
+            // Extract numbers from this line
+            const nums = extractNumbers(line);
+            if (nums.length < 2) continue;
+
+            // Only update if we got more numbers than before
+            if (results[size] && results[size]._count >= nums.length) continue;
+
             results[size] = {
                 rawNumbers: nums,
-                _numberCount: nums.length,
-                unit: isCm ? 'cm' : 'inch'
+                _count: nums.length,
+                unit
             };
-            console.log(`Line parse - Size ${size}: [${nums.join(', ')}]`);
+            console.log(`Line found ${size}: [${nums.join(', ')}] from: "${line.substring(0, 60)}"`);
         }
     }
 
-    // Strategy 2: Pattern matching on full text
-    const fullText = text.replace(/\n/g, ' ');
-    
-    // Pattern: "S" followed by numbers
+    // Fallback: pattern matching on full text
     for (const size of VALID_SIZES) {
-        if (results[size] && results[size]._numberCount >= 2) continue;
-        
-        // Find size and grab following numbers
-        const patterns = [
-            new RegExp(`\\b${size}\\b[^A-Za-z]*?(\\d+\\.?\\d*)[^\\d]+(\\d+\\.?\\d*)(?:[^\\d]+(\\d+\\.?\\d*))?(?:[^\\d]+(\\d+\\.?\\d*))?(?:[^\\d]+(\\d+\\.?\\d*))?`, 'i'),
-            // Also try with size after numbers for some formats
-            new RegExp(`(\\d+\\.?\\d*)[^\\d]+(\\d+\\.?\\d*)[^\\d]*\\b${size}\\b`, 'i')
-        ];
-        
-        for (const pat of patterns) {
-            const m = fullText.match(pat);
-            if (m) {
-                const nums = [m[1], m[2], m[3], m[4], m[5]]
-                    .filter(n => n !== undefined)
-                    .map(n => parseFloat(n))
-                    .filter(n => !isNaN(n) && n >= 5 && n <= 90);
-                
-                if (nums.length >= 2) {
-                    results[size] = {
-                        rawNumbers: nums,
-                        _numberCount: nums.length,
-                        unit: isCm ? 'cm' : 'inch'
-                    };
-                    console.log(`Pattern parse - Size ${size}: [${nums.join(', ')}]`);
-                    break;
+        if (results[size] && results[size]._count >= 3) continue;
+
+        const fullText = text.replace(/\n/g, ' ');
+        let pattern;
+
+        if (size === 'XL') {
+            pattern = /\bXL\b[^A-Za-z]*?(\d+\.?\d*)[^\d]+(\d+\.?\d*)(?:[^\d]+(\d+\.?\d*))?(?:[^\d]+(\d+\.?\d*))?/gi;
+        } else {
+            pattern = new RegExp(
+                `(?:^|\\s|[(|])${size}(?:\\s|$|[)|])` +
+                `[^A-Za-z]*?(\\d+\\.?\\d*)[^\\d]+(\\d+\\.?\\d*)(?:[^\\d]+(\\d+\\.?\\d*))?(?:[^\\d]+(\\d+\\.?\\d*))?`,
+                'gi'
+            );
+        }
+
+        let match;
+        while ((match = pattern.exec(fullText)) !== null) {
+            const nums = [match[1], match[2], match[3], match[4]]
+                .filter(n => n !== undefined)
+                .map(n => parseFloat(n))
+                .filter(n => !isNaN(n) && n >= 5 && n <= 90);
+
+            if (nums.length >= 2) {
+                if (!results[size] || nums.length > results[size]._count) {
+                    results[size] = { rawNumbers: nums, _count: nums.length, unit };
+                    console.log(`Pattern found ${size}: [${nums.join(', ')}]`);
                 }
             }
         }
     }
 
-    // Strategy 3: Table structure - find rows of numbers
-    if (Object.keys(results).length < 2) {
-        console.log('Trying table structure parsing...');
-        
-        // Find all numbers grouped by proximity
-        const allNums = [];
-        const numPat = /\d+\.?\d*/g;
-        let nm2;
-        while ((nm2 = numPat.exec(fullText)) !== null) {
-            const v = parseFloat(nm2[0]);
-            if (v >= 5 && v <= 90) allNums.push(v);
-        }
-        
-        // Find all sizes in order of appearance
-        const sizeOrder = [];
-        const sizePat = /\b(S|M|L|XL)\b/gi;
-        let sm;
-        while ((sm = sizePat.exec(fullText)) !== null) {
-            const s = sm[1].toUpperCase();
-            if (VALID_SIZES.includes(s) && !sizeOrder.includes(s)) {
-                sizeOrder.push(s);
-            }
-        }
-        
-        if (sizeOrder.length >= 2 && allNums.length >= sizeOrder.length * 2) {
-            const perSize = Math.floor(allNums.length / sizeOrder.length);
-            sizeOrder.forEach((size, idx) => {
-                if (results[size] && results[size]._numberCount >= 2) return;
-                const start = idx * perSize;
-                const nums = allNums.slice(start, start + perSize);
-                if (nums.length >= 2) {
-                    results[size] = { rawNumbers: nums, _numberCount: nums.length, unit: isCm ? 'cm' : 'inch' };
-                    console.log(`Table parse - Size ${size}: [${nums.join(', ')}]`);
-                }
-            });
-        }
-    }
-
-    // Convert numbers to measurements
+    // Map raw numbers to measurements (bust, waist, hips, sleeve)
     Object.keys(results).forEach(size => {
         const data = results[size];
         const nums = data.rawNumbers;
-        const u = data.unit;
-        
-        // Convert to inch if cm
-        const toInch = v => u === 'cm' ? Math.round((v / 2.54) * 100) / 100 : v;
-        
-        // Map numbers to measurements
-        // Most common format: length, half_chest/width, sleeve
-        // Or: bust, waist, hips, length
-        // We'll try to match by comparing with standard values
-        
-        const mapped = {};
-        
-        if (nums.length === 2) {
-            mapped.length = toInch(nums[0]);
-            mapped.half_chest = toInch(nums[1]);
+        const toInch = v => data.unit === 'cm' ? round2(v / 2.54) : v;
+
+        const mapped = { unit: data.unit, rawNumbers: nums };
+
+        // Map based on number count
+        // Standard order: bust, waist, hips, sleeve
+        if (nums.length >= 4) {
+            mapped.bust = toInch(nums[0]);
+            mapped.waist = toInch(nums[1]);
+            mapped.hips = toInch(nums[2]);
+            mapped.sleeve = toInch(nums[3]);
         } else if (nums.length === 3) {
-            mapped.length = toInch(nums[0]);
-            mapped.half_chest = toInch(nums[1]);
-            mapped.sleeve = toInch(nums[2]);
-        } else if (nums.length >= 4) {
-            // Could be: bust, waist, hips, length  OR  length, width, chest, sleeve
-            // Check if first number looks like bust (30-50 range typically)
-            const first = toInch(nums[0]);
-            const stdBust = WOHWOOH_STANDARD.body.sizes[size]?.bust;
-            const stdLen = WOHWOOH_STANDARD.tops.sizes[size]?.length;
-            
-            if (stdBust && Math.abs(first - stdBust) < Math.abs(first - (stdLen || 30))) {
-                // Looks like body measurements: bust, waist, hips, [length]
-                mapped.bust = toInch(nums[0]);
-                mapped.waist = toInch(nums[1]);
-                mapped.hips = toInch(nums[2]);
-                if (nums[3]) mapped.length = toInch(nums[3]);
-            } else {
-                // Looks like garment measurements
-                mapped.length = toInch(nums[0]);
-                mapped.half_chest = toInch(nums[1]);
-                if (nums[2]) {
-                    const v = toInch(nums[2]);
-                    // If value > 20, likely chest (full), else sleeve
-                    if (v > 20) {
-                        mapped.bust = v;
-                    } else {
-                        mapped.sleeve = v;
-                    }
-                }
-                if (nums[3]) mapped.sleeve = toInch(nums[3]);
-            }
+            mapped.bust = toInch(nums[0]);
+            mapped.waist = toInch(nums[1]);
+            mapped.hips = toInch(nums[2]);
+        } else if (nums.length === 2) {
+            mapped.bust = toInch(nums[0]);
+            mapped.waist = toInch(nums[1]);
         }
-        
-        results[size] = { ...mapped, unit: u, rawNumbers: nums };
+
+        results[size] = mapped;
     });
 
     return results;
 }
 
+function extractNumbers(line) {
+    const nums = [];
+    // Match numbers like 33, 35.5, 23.5
+    const pattern = /(\d+\.?\d*)/g;
+    let m;
+    while ((m = pattern.exec(line)) !== null) {
+        const v = parseFloat(m[1]);
+        if (v >= 5 && v <= 90) {
+            nums.push(v);
+        }
+    }
+    return nums;
+}
+
+function round2(n) { return Math.round(n * 100) / 100; }
+
 // ==================================================================
-// COMPARISON - Upload >= Standard = MATCH, Upload < Standard = UNMATCH
+// COMPARISON
+// Upload >= MIN of standard → MATCH
+// Upload <  MIN of standard → UNMATCH
 // ==================================================================
 function compareMeasurements(extracted) {
     const tolInch = tolerance / 2.54;
-    
+
     const result = {
         overallMatch: true,
         details: [],
@@ -642,42 +661,53 @@ function compareMeasurements(extracted) {
         const data = extracted[size];
         if (!data) continue;
 
-        const sizeDetail = { size, comparisons: [], isMatch: true, unit: data.unit };
+        const std = WOHWOOH_STANDARD.sizes[size];
+        if (!std) continue;
 
-        // Compare with TOPS standard
-        const stdTops = WOHWOOH_STANDARD.tops.sizes[size];
-        if (stdTops) {
-            ['length', 'half_chest', 'sleeve'].forEach(key => {
-                if (data[key] === undefined) return;
-                const ext = data[key];
-                const std = stdTops[key];
-                doCompare(sizeDetail, key, ext, std, tolInch, result);
-            });
-        }
+        const sizeDetail = {
+            size,
+            comparisons: [],
+            isMatch: true,
+            unit: data.unit
+        };
 
-        // Compare with BODY standard
-        const stdBody = WOHWOOH_STANDARD.body.sizes[size];
-        if (stdBody) {
-            ['bust', 'waist', 'hips'].forEach(key => {
-                if (data[key] === undefined) return;
-                const ext = data[key];
-                const std = stdBody[key];
-                doCompare(sizeDetail, key, ext, std, tolInch, result);
-            });
+        // Compare each measurement: bust, waist, hips, sleeve
+        WOHWOOH_STANDARD.keys.forEach(key => {
+            if (data[key] === undefined || data[key] === null) return;
 
-            // Also check if half_chest * 2 matches bust
-            if (data.half_chest && !data.bust) {
-                const fullChest = data.half_chest * 2;
-                doCompare(sizeDetail, 'bust (½×2)', fullChest, stdBody.bust, tolInch, result);
+            result.totalChecked++;
+            const uploadVal = data[key];
+            const standardMin = std[key].min;
+            const standardMax = std[key].max;
+            const diff = uploadVal - standardMin;
+
+            // MATCH: upload >= (MIN - tolerance)
+            // Nghĩa là: thừa hoặc đủ → MATCH, thiếu quá tolerance → UNMATCH
+            const isMatch = uploadVal >= (standardMin - tolInch);
+
+            if (isMatch) {
+                result.totalMatched++;
+            } else {
+                sizeDetail.isMatch = false;
             }
-        }
+
+            sizeDetail.comparisons.push({
+                key,
+                label: WOHWOOH_STANDARD.labels[key],
+                uploaded: round2(uploadVal),
+                standardMin,
+                standardMax,
+                diff: round2(diff),
+                isMatch
+            });
+        });
 
         if (sizeDetail.comparisons.length > 0) {
-            if (!sizeDetail.isMatch) {
+            if (sizeDetail.isMatch) {
+                result.matchedSizes.push(size);
+            } else {
                 result.unmatchedSizes.push(size);
                 result.overallMatch = false;
-            } else {
-                result.matchedSizes.push(size);
             }
             result.details.push(sizeDetail);
         }
@@ -691,32 +721,11 @@ function compareMeasurements(extracted) {
     return result;
 }
 
-function doCompare(sizeDetail, key, extracted, standard, tolInch, result) {
-    result.totalChecked++;
-    const diff = extracted - standard;
-    
-    // MATCH logic: ảnh upload >= chuẩn US (hoặc thiếu trong dung sai)
-    // UNMATCH: ảnh upload < chuẩn US (thiếu quá dung sai)
-    const isMatch = diff >= -tolInch; // extracted >= standard - tolerance
-    
-    if (isMatch) result.totalMatched++;
-    else sizeDetail.isMatch = false;
-
-    sizeDetail.comparisons.push({
-        key,
-        label: LABELS[key] || key,
-        extracted: Math.round(extracted * 100) / 100,
-        standard,
-        diff: Math.round(diff * 100) / 100,
-        isMatch
-    });
-}
-
 // ==================================================================
-// DISPLAY
+// DISPLAY RESULTS
 // ==================================================================
 function displaySummary(total, match, unmatch) {
-    const pct = total ? Math.round((match/total)*100) : 0;
+    const pct = total ? Math.round((match / total) * 100) : 0;
     DOM.resultsSummary.innerHTML = `
         <div class="summary-item total"><div class="number">${total}</div><div class="label">Tổng ảnh</div></div>
         <div class="summary-item match"><div class="number">${match}</div><div class="label">✓ MATCH</div></div>
@@ -727,44 +736,54 @@ function displaySummary(total, match, unmatch) {
 
 function displayResult(result, index) {
     let body = '';
-    
+
     if (result.comparison.noData) {
         body = `
             <div class="no-data-message">
                 <i class="fas fa-exclamation-triangle"></i>
                 <p>Không trích xuất được dữ liệu size</p>
                 <small>
-                    • Ảnh không rõ nét / độ phân giải thấp<br>
-                    • Bảng size không theo định dạng chuẩn<br>
-                    • Text bị nhiễu hoặc che khuất<br><br>
+                    • Ảnh không rõ nét<br>
+                    • Bảng size không đọc được<br>
+                    • Text bị nhiễu<br><br>
                     <strong>Gợi ý:</strong> Upload ảnh chất lượng cao hơn
                 </small>
             </div>`;
     } else {
-        const tolInch = (tolerance/2.54).toFixed(2);
+        const tolInch = (tolerance / 2.54).toFixed(2);
+
         body = `
             <div class="comparison-info">
                 <span class="info-badge"><i class="fas fa-ruler"></i> Dung sai: ±${tolerance}cm (±${tolInch}")</span>
-                <span class="info-badge"><i class="fas fa-exchange-alt"></i> Gốc: ${result.comparison.details[0]?.unit || 'inch'}</span>
-                <span class="info-badge"><i class="fas fa-info-circle"></i> Upload ≥ Chuẩn = MATCH</span>
+                <span class="info-badge"><i class="fas fa-exchange-alt"></i> Đơn vị gốc: ${result.comparison.details[0]?.unit || 'inch'}</span>
+                <span class="info-badge"><i class="fas fa-arrow-up"></i> Upload ≥ MIN = MATCH</span>
             </div>
             <table class="comparison-table">
-                <thead><tr>
-                    <th>Size</th><th>Chỉ số</th><th>Ảnh upload</th><th>Chuẩn US</th><th>Chênh lệch</th><th>Kết quả</th>
-                </tr></thead>
+                <thead>
+                    <tr>
+                        <th>Size</th>
+                        <th>Chỉ số</th>
+                        <th>Ảnh Upload</th>
+                        <th>Chuẩn US<br><small>(MIN - MAX)</small></th>
+                        <th>So với MIN</th>
+                        <th>Kết quả</th>
+                    </tr>
+                </thead>
                 <tbody>
-                ${result.comparison.details.map(d => {
-                    return d.comparisons.map((c, i) => `
-                        <tr>
-                            ${i===0 ? `<td class="size-col" rowspan="${d.comparisons.length}">${d.size}</td>` : ''}
-                            <td>${c.label}</td>
-                            <td><strong>${c.extracted}"</strong></td>
-                            <td>${c.standard}"</td>
-                            <td>${c.diff > 0 ? '+' : ''}${c.diff}"</td>
-                            <td class="${c.isMatch ? 'match-cell' : 'unmatch-cell'}">${c.isMatch ? '✓ OK' : '✗ Thiếu'}</td>
-                        </tr>
-                    `).join('');
-                }).join('')}
+                    ${result.comparison.details.map(d => {
+            return d.comparisons.map((c, i) => `
+                            <tr>
+                                ${i === 0 ? `<td class="size-col" rowspan="${d.comparisons.length}">${d.size}</td>` : ''}
+                                <td>${c.label}</td>
+                                <td><strong>${c.uploaded}"</strong></td>
+                                <td>${c.standardMin}" - ${c.standardMax}"</td>
+                                <td>${c.diff > 0 ? '+' : ''}${c.diff}"</td>
+                                <td class="${c.isMatch ? 'match-cell' : 'unmatch-cell'}">
+                                    ${c.isMatch ? (c.diff >= 0 ? '✓ Đủ/Thừa' : '✓ OK (trong dung sai)') : '✗ Thiếu'}
+                                </td>
+                            </tr>
+                        `).join('');
+        }).join('')}
                 </tbody>
             </table>
             <div class="size-summary">
@@ -780,14 +799,16 @@ function displayResult(result, index) {
                     <img src="${result.image.src}" class="result-image" alt="${index}">
                     <div class="result-title">
                         <h4>Ảnh #${index}</h4>
-                        <small>${result.image.name.substring(0,35)}</small>
+                        <small>${result.image.name.substring(0, 35)}</small>
                     </div>
                 </div>
-                <span class="result-status ${result.status}">${result.status==='match' ? '✓ MATCH' : '✗ UNMATCH'}</span>
+                <span class="result-status ${result.status}">
+                    ${result.status === 'match' ? '✓ MATCH' : '✗ UNMATCH'}
+                </span>
             </div>
             ${body}
             <details class="extracted-data">
-                <summary><i class="fas fa-file-alt"></i> OCR Debug Text</summary>
+                <summary><i class="fas fa-file-alt"></i> OCR Debug</summary>
                 <pre>${escapeHtml(result.text)}</pre>
             </details>
         </div>
@@ -809,25 +830,41 @@ function displayError(img, index, error) {
     `);
 }
 
-function escapeHtml(t) { const d=document.createElement('div'); d.textContent=t; return d.innerHTML; }
+function escapeHtml(t) {
+    const d = document.createElement('div');
+    d.textContent = t;
+    return d.innerHTML;
+}
 
 // ==================================================================
 // LOADING & TOAST
 // ==================================================================
-function showLoading(t='Đang xử lý...') { DOM.loadingOverlay.classList.add('active'); DOM.loadingText.textContent=t; DOM.loadingDetail.textContent=''; DOM.progress.style.width='0%'; }
+function showLoading(t) {
+    DOM.loadingOverlay.classList.add('active');
+    DOM.loadingText.textContent = t;
+    DOM.loadingDetail.textContent = '';
+    DOM.progress.style.width = '0%';
+}
 function hideLoading() { DOM.loadingOverlay.classList.remove('active'); }
-function updateLoadingText(t) { DOM.loadingText.textContent=t; }
-function updateLoadingDetail(t) { DOM.loadingDetail.textContent=t; }
-function updateProgress(p) { DOM.progress.style.width=`${Math.min(100,Math.max(0,p))}%`; }
+function updateLoadingText(t) { DOM.loadingText.textContent = t; }
+function updateLoadingDetail(t) { DOM.loadingDetail.textContent = t; }
+function updateProgress(p) { DOM.progress.style.width = `${Math.min(100, Math.max(0, p))}%`; }
 
-function showToast(msg, type='info') {
-    const icons = { success:'fa-check-circle', error:'fa-exclamation-circle', warning:'fa-exclamation-triangle', info:'fa-info-circle' };
+function showToast(msg, type = 'info') {
+    const icons = {
+        success: 'fa-check-circle', error: 'fa-exclamation-circle',
+        warning: 'fa-exclamation-triangle', info: 'fa-info-circle'
+    };
     const t = document.createElement('div');
     t.className = `toast ${type}`;
     t.innerHTML = `<i class="fas ${icons[type]}"></i> <span>${msg}</span>`;
     DOM.toastContainer.appendChild(t);
-    setTimeout(() => { t.style.opacity='0'; t.style.transform='translateX(100%)'; setTimeout(()=>t.remove(),300); }, 4000);
+    setTimeout(() => {
+        t.style.opacity = '0';
+        t.style.transform = 'translateX(100%)';
+        setTimeout(() => t.remove(), 300);
+    }, 4000);
 }
 
-console.log('📐 Size Comparison Tool v3.0 loaded');
-console.log('📋 Standard: https://wohwooh.com/pages/size-guide');
+console.log('📐 Size Comparison Tool v3.1');
+console.log('📋 https://wohwooh.com/pages/size-guide');
