@@ -69,6 +69,7 @@ const SIZE_STANDARDS = {
 let uploadedImages = [];
 let currentProductType = 'tshirt';
 let tolerance = 2; // cm
+let isProcessing = false;
 
 // ==================== DOM ELEMENTS ====================
 const $ = (selector) => document.querySelector(selector);
@@ -113,7 +114,8 @@ document.addEventListener('DOMContentLoaded', () => {
     loadStandardTable();
     initCompareButton();
     
-    console.log('✅ Size Comparison Tool initialized!');
+    console.log('✅ Size Comparison Tool v2.0 initialized!');
+    showToast('Sẵn sàng! Upload tối đa 5 ảnh để so sánh.', 'info');
 });
 
 // ==================== TAB FUNCTIONALITY ====================
@@ -155,18 +157,39 @@ function initDropzone() {
         dropzone.addEventListener(eventName, () => dropzone.classList.remove('dragover'));
     });
 
-    dropzone.addEventListener('drop', (e) => handleFiles(e.dataTransfer.files));
+    dropzone.addEventListener('drop', (e) => {
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            handleFiles(files);
+        }
+    });
+    
     dropzone.addEventListener('click', (e) => {
         if (!e.target.closest('.file-label')) {
             fileInput.click();
         }
     });
-    fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+    
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleFiles(e.target.files);
+            // Reset input để có thể chọn lại cùng file
+            e.target.value = '';
+        }
+    });
 }
 
-function handleFiles(files) {
-    const validFiles = Array.from(files).filter(file => {
-        return ['image/png', 'image/jpeg', 'image/jpg'].includes(file.type);
+// ==================== FIX: Handle Multiple Files ====================
+async function handleFiles(files) {
+    const fileArray = Array.from(files);
+    
+    // Filter valid image files
+    const validFiles = fileArray.filter(file => {
+        const isValid = ['image/png', 'image/jpeg', 'image/jpg'].includes(file.type);
+        if (!isValid) {
+            console.log(`Skipped invalid file: ${file.name} (${file.type})`);
+        }
+        return isValid;
     });
 
     if (validFiles.length === 0) {
@@ -174,22 +197,76 @@ function handleFiles(files) {
         return;
     }
 
-    if (uploadedImages.length + validFiles.length > 5) {
-        showToast('Tối đa 5 ảnh! Đã bỏ qua một số file.', 'warning');
+    // Check remaining slots
+    const remainingSlots = 5 - uploadedImages.length;
+    
+    if (remainingSlots <= 0) {
+        showToast('Đã đạt giới hạn 5 ảnh! Hãy xóa bớt ảnh cũ.', 'warning');
+        return;
     }
 
-    const remaining = 5 - uploadedImages.length;
-    validFiles.slice(0, remaining).forEach(file => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            addImage({
-                type: 'file',
-                src: e.target.result,
-                name: file.name
-            });
-        };
-        reader.readAsDataURL(file);
+    const filesToProcess = validFiles.slice(0, remainingSlots);
+    
+    if (validFiles.length > remainingSlots) {
+        showToast(`Chỉ thêm được ${remainingSlots} ảnh nữa. Đã bỏ qua ${validFiles.length - remainingSlots} file.`, 'warning');
+    }
+
+    console.log(`Processing ${filesToProcess.length} files...`);
+
+    // Process all files and wait for completion
+    const promises = filesToProcess.map((file, index) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            
+            reader.onload = (e) => {
+                console.log(`✅ Loaded file ${index + 1}: ${file.name}`);
+                resolve({
+                    type: 'file',
+                    src: e.target.result,
+                    name: file.name,
+                    size: file.size,
+                    id: Date.now() + index + Math.random() // Unique ID
+                });
+            };
+            
+            reader.onerror = (error) => {
+                console.error(`❌ Error loading file ${file.name}:`, error);
+                reject(error);
+            };
+            
+            reader.readAsDataURL(file);
+        });
     });
+
+    try {
+        // Wait for all files to be loaded
+        const loadedImages = await Promise.all(promises);
+        
+        // Add all images to the array
+        loadedImages.forEach(imageData => {
+            // Check for duplicates
+            const isDuplicate = uploadedImages.some(img => 
+                img.name === imageData.name && img.size === imageData.size
+            );
+            
+            if (!isDuplicate) {
+                uploadedImages.push(imageData);
+                console.log(`Added: ${imageData.name}, Total: ${uploadedImages.length}`);
+            } else {
+                console.log(`Skipped duplicate: ${imageData.name}`);
+            }
+        });
+        
+        // Update UI after all images are added
+        updatePreview();
+        updateCompareButton();
+        
+        showToast(`Đã thêm ${loadedImages.length} ảnh! (${uploadedImages.length}/5)`, 'success');
+        
+    } catch (error) {
+        console.error('Error processing files:', error);
+        showToast('Có lỗi khi đọc file!', 'error');
+    }
 }
 
 // ==================== URL INPUTS FUNCTIONALITY ====================
@@ -210,7 +287,8 @@ function initUrlInputs() {
 }
 
 function addUrlInput() {
-    if (elements.urlInputsContainer.children.length >= 5) {
+    const currentCount = elements.urlInputsContainer.children.length;
+    if (currentCount >= 5) {
         showToast('Tối đa 5 URL!', 'warning');
         return;
     }
@@ -218,7 +296,7 @@ function addUrlInput() {
     const group = document.createElement('div');
     group.className = 'url-input-group';
     group.innerHTML = `
-        <input type="text" class="url-input" placeholder="Nhập URL ảnh...">
+        <input type="text" class="url-input" placeholder="Nhập URL ảnh ${currentCount + 1}...">
         <button class="btn-remove-url" title="Xóa"><i class="fas fa-times"></i></button>
     `;
     elements.urlInputsContainer.appendChild(group);
@@ -235,36 +313,89 @@ async function loadUrlImages() {
         return;
     }
 
-    // Remove existing URL images
-    uploadedImages = uploadedImages.filter(img => img.type !== 'url');
+    // Check remaining slots
+    const remainingSlots = 5 - uploadedImages.length;
+    if (remainingSlots <= 0) {
+        showToast('Đã đạt giới hạn 5 ảnh!', 'warning');
+        return;
+    }
 
-    showLoading('Đang tải ảnh từ URL...');
+    const urlsToLoad = urls.slice(0, remainingSlots);
     
-    for (let i = 0; i < urls.length && uploadedImages.length < 5; i++) {
+    showLoading('Đang tải ảnh từ URL...');
+    let successCount = 0;
+    
+    for (let i = 0; i < urlsToLoad.length; i++) {
         try {
-            updateLoadingText(`Đang tải ảnh ${i + 1}/${urls.length}...`);
+            updateLoadingText(`Đang tải ảnh ${i + 1}/${urlsToLoad.length}...`);
+            updateProgress((i / urlsToLoad.length) * 100);
             
-            // For CORS issues, we'll use a proxy or direct loading
-            const imgSrc = await loadImageFromUrl(urls[i]);
+            const imgSrc = await loadImageFromUrl(urlsToLoad[i]);
             
-            addImage({
+            const imageData = {
                 type: 'url',
                 src: imgSrc,
-                name: urls[i].split('/').pop() || `URL Image ${i + 1}`,
-                originalUrl: urls[i]
-            });
+                name: urlsToLoad[i].split('/').pop() || `URL_Image_${i + 1}`,
+                originalUrl: urlsToLoad[i],
+                id: Date.now() + i + Math.random()
+            };
+            
+            uploadedImages.push(imageData);
+            successCount++;
+            
         } catch (error) {
-            console.error('Failed to load:', urls[i], error);
-            showToast(`Không thể tải: ${urls[i].substring(0, 30)}...`, 'error');
+            console.error('Failed to load:', urlsToLoad[i], error);
+            showToast(`Không thể tải: ${urlsToLoad[i].substring(0, 30)}...`, 'error');
         }
     }
 
     hideLoading();
-    showToast(`Đã tải ${uploadedImages.filter(img => img.type === 'url').length} ảnh!`, 'success');
+    updatePreview();
+    updateCompareButton();
+    
+    if (successCount > 0) {
+        showToast(`Đã tải ${successCount} ảnh! (${uploadedImages.length}/5)`, 'success');
+    }
 }
 
 function loadImageFromUrl(url) {
     return new Promise((resolve, reject) => {
+        // Try direct load first
+        const img = new Image();
+        img.crossOrigin = 'Anonymous';
+        
+        const timeout = setTimeout(() => {
+            reject(new Error('Timeout loading image'));
+        }, 15000);
+        
+        img.onload = () => {
+            clearTimeout(timeout);
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                resolve(canvas.toDataURL('image/png'));
+            } catch (e) {
+                // Try with proxy if direct fails
+                loadWithProxy(url).then(resolve).catch(reject);
+            }
+        };
+        
+        img.onerror = () => {
+            clearTimeout(timeout);
+            // Try with proxy
+            loadWithProxy(url).then(resolve).catch(reject);
+        };
+        
+        img.src = url;
+    });
+}
+
+function loadWithProxy(url) {
+    return new Promise((resolve, reject) => {
+        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
         const img = new Image();
         img.crossOrigin = 'Anonymous';
         
@@ -277,26 +408,8 @@ function loadImageFromUrl(url) {
             resolve(canvas.toDataURL('image/png'));
         };
         
-        img.onerror = () => {
-            // Try with proxy
-            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-            const proxyImg = new Image();
-            proxyImg.crossOrigin = 'Anonymous';
-            
-            proxyImg.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = proxyImg.width;
-                canvas.height = proxyImg.height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(proxyImg, 0, 0);
-                resolve(canvas.toDataURL('image/png'));
-            };
-            
-            proxyImg.onerror = () => reject(new Error('Failed to load image'));
-            proxyImg.src = proxyUrl;
-        };
-        
-        img.src = url;
+        img.onerror = () => reject(new Error('Failed to load with proxy'));
+        img.src = proxyUrl;
     });
 }
 
@@ -313,57 +426,78 @@ function isValidImageUrl(url) {
 }
 
 // ==================== IMAGE MANAGEMENT ====================
-function addImage(imageData) {
-    if (uploadedImages.length >= 5) {
-        showToast('Đã đạt giới hạn 5 ảnh!', 'warning');
-        return;
-    }
-    
-    const isDuplicate = uploadedImages.some(img => 
-        img.src === imageData.src || img.originalUrl === imageData.originalUrl
-    );
-    
-    if (!isDuplicate) {
-        uploadedImages.push(imageData);
+function removeImage(index) {
+    if (index >= 0 && index < uploadedImages.length) {
+        const removed = uploadedImages.splice(index, 1);
+        console.log(`Removed image: ${removed[0]?.name}, Remaining: ${uploadedImages.length}`);
         updatePreview();
         updateCompareButton();
-        showToast(`Đã thêm: ${imageData.name}`, 'success');
+        showToast('Đã xóa ảnh!', 'info');
     }
 }
 
-function removeImage(index) {
-    uploadedImages.splice(index, 1);
+function clearAllImages() {
+    uploadedImages = [];
     updatePreview();
     updateCompareButton();
+    showToast('Đã xóa tất cả ảnh!', 'info');
 }
 
 function updatePreview() {
-    elements.previewGrid.innerHTML = '';
-    elements.imageCount.textContent = uploadedImages.length;
+    const grid = elements.previewGrid;
+    const section = elements.previewSection;
+    const countEl = elements.imageCount;
+    
+    // Clear grid
+    grid.innerHTML = '';
+    
+    // Update count
+    countEl.textContent = uploadedImages.length;
+    
+    console.log(`Updating preview: ${uploadedImages.length} images`);
     
     if (uploadedImages.length === 0) {
-        elements.previewSection.classList.remove('show');
+        section.classList.remove('show');
+        section.style.display = 'none';
         return;
     }
     
-    elements.previewSection.classList.add('show');
+    // Show section
+    section.classList.add('show');
+    section.style.display = 'block';
     
+    // Create preview items
     uploadedImages.forEach((img, index) => {
         const item = document.createElement('div');
         item.className = 'preview-item';
+        item.dataset.index = index;
+        
         item.innerHTML = `
-            <img src="${img.src}" alt="${img.name}" onerror="this.src='https://via.placeholder.com/100?text=Error'">
-            <button class="remove-btn" onclick="removeImage(${index})" title="Xóa">
+            <img src="${img.src}" alt="${img.name}" 
+                 onerror="this.src='https://via.placeholder.com/100x100?text=Error'">
+            <button class="remove-btn" onclick="removeImage(${index})" title="Xóa ảnh này">
                 <i class="fas fa-times"></i>
             </button>
             <span class="image-index">#${index + 1}</span>
         `;
-        elements.previewGrid.appendChild(item);
+        
+        grid.appendChild(item);
     });
+    
+    console.log(`Preview updated: ${grid.children.length} items shown`);
 }
 
 function updateCompareButton() {
-    elements.compareBtn.disabled = uploadedImages.length === 0;
+    const btn = elements.compareBtn;
+    const hasImages = uploadedImages.length > 0;
+    
+    btn.disabled = !hasImages || isProcessing;
+    
+    if (hasImages) {
+        btn.innerHTML = `<i class="fas fa-balance-scale"></i> So Sánh ${uploadedImages.length} Ảnh`;
+    } else {
+        btn.innerHTML = `<i class="fas fa-balance-scale"></i> So Sánh Kích Thước`;
+    }
 }
 
 // ==================== SETTINGS ====================
@@ -371,6 +505,7 @@ function initSettings() {
     elements.productTypeSelect.addEventListener('change', (e) => {
         currentProductType = e.target.value;
         loadStandardTable();
+        showToast(`Đã chọn: ${SIZE_STANDARDS[currentProductType].name}`, 'info');
     });
 
     elements.toleranceInput.addEventListener('input', (e) => {
@@ -384,10 +519,8 @@ function loadStandardTable() {
     const tbody = elements.standardTbody;
     const header = elements.tableHeader;
     
-    // Update product name
     elements.currentProductName.textContent = standard.name;
     
-    // Update headers
     const measurementLabels = {
         length: 'Length (inch)',
         width: 'Width (inch)',
@@ -399,7 +532,6 @@ function loadStandardTable() {
     header.innerHTML = '<th>Size</th>' + 
         standard.measurements.map(m => `<th>${measurementLabels[m]}</th>`).join('');
 
-    // Update body
     tbody.innerHTML = '';
     Object.entries(standard.sizes).forEach(([size, measurements]) => {
         const row = document.createElement('tr');
@@ -420,7 +552,17 @@ async function startComparison() {
         return;
     }
 
-    showLoading('Khởi tạo OCR engine...');
+    if (isProcessing) {
+        showToast('Đang xử lý, vui lòng đợi...', 'warning');
+        return;
+    }
+
+    isProcessing = true;
+    updateCompareButton();
+    
+    showLoading('Đang khởi tạo OCR engine...');
+    
+    // Clear previous results
     elements.resultsContainer.innerHTML = '';
     elements.resultsSummary.innerHTML = '';
     elements.resultsCard.style.display = 'block';
@@ -430,34 +572,63 @@ async function startComparison() {
     let matchCount = 0;
     let unmatchCount = 0;
 
+    console.log(`\n========== Starting comparison for ${total} images ==========\n`);
+
     for (let i = 0; i < uploadedImages.length; i++) {
         const img = uploadedImages[i];
-        updateProgress(((i) / total) * 100);
-        updateLoadingText(`Đang xử lý ảnh ${i + 1}/${total}...`);
+        const imageNum = i + 1;
+        
+        console.log(`\n----- Processing Image ${imageNum}/${total}: ${img.name} -----`);
+        
+        updateProgress((i / total) * 100);
+        updateLoadingText(`Đang xử lý ảnh ${imageNum}/${total}...`);
         updateLoadingDetail(img.name);
 
         try {
-            const result = await processImage(img, i + 1, total);
+            const result = await processImage(img, imageNum, total);
             results.push(result);
             
-            if (result.status === 'match') matchCount++;
-            else unmatchCount++;
+            if (result.status === 'match') {
+                matchCount++;
+                console.log(`✅ Image ${imageNum}: MATCH`);
+            } else {
+                unmatchCount++;
+                console.log(`❌ Image ${imageNum}: UNMATCH`);
+            }
             
-            displayResult(result, i + 1);
+            // Display result immediately
+            displayResult(result, imageNum);
+            
         } catch (error) {
-            console.error('Error processing image:', error);
+            console.error(`❌ Error processing image ${imageNum}:`, error);
             unmatchCount++;
-            displayErrorResult(img, i + 1, error.message);
+            
+            const errorResult = {
+                image: img,
+                status: 'error',
+                error: error.message
+            };
+            results.push(errorResult);
+            displayErrorResult(img, imageNum, error.message);
         }
+        
+        // Update progress
+        updateProgress(((i + 1) / total) * 100);
     }
+
+    console.log(`\n========== Comparison Complete ==========`);
+    console.log(`Total: ${total}, Match: ${matchCount}, Unmatch: ${unmatchCount}`);
 
     // Display summary
     displaySummary(total, matchCount, unmatchCount);
     
     hideLoading();
+    isProcessing = false;
+    updateCompareButton();
     
+    // Show final toast
     if (matchCount === total) {
-        showToast(`✅ Tất cả ${total} ảnh đều MATCH!`, 'success');
+        showToast(`✅ Tuyệt vời! Tất cả ${total} ảnh đều MATCH!`, 'success');
     } else if (unmatchCount === total) {
         showToast(`❌ Tất cả ${total} ảnh đều UNMATCH!`, 'error');
     } else {
@@ -468,27 +639,32 @@ async function startComparison() {
 async function processImage(imageData, current, total) {
     const shouldEnhance = elements.enhanceImageCheckbox.checked;
     
-    // Load and optionally enhance image
+    // Step 1: Load image
     updateLoadingDetail('Đang tải ảnh...');
     const img = await loadImage(imageData.src);
+    console.log(`Image loaded: ${img.width}x${img.height}`);
     
+    // Step 2: Enhance image for better OCR
     let processedCanvas;
     if (shouldEnhance) {
-        updateLoadingDetail('Đang làm rõ ảnh...');
-        processedCanvas = enhanceImageQuality(img);
+        updateLoadingDetail('Đang làm rõ ảnh để tăng độ chính xác...');
+        processedCanvas = enhanceImageForOCR(img);
     } else {
         processedCanvas = imageToCanvas(img);
     }
     
-    // OCR
-    updateLoadingDetail('Đang nhận dạng text (OCR)...');
-    const extractedText = await extractTextFromImage(processedCanvas, current, total);
+    // Step 3: OCR with high accuracy settings
+    updateLoadingDetail('Đang nhận dạng text (OCR) - Chế độ chính xác cao...');
+    const extractedText = await extractTextWithHighAccuracy(processedCanvas, current, total);
+    console.log('Extracted text:', extractedText.substring(0, 200) + '...');
     
-    // Parse measurements
-    updateLoadingDetail('Đang phân tích kích thước...');
-    const measurements = parseMeasurements(extractedText);
+    // Step 4: Parse measurements with multiple patterns
+    updateLoadingDetail('Đang phân tích và trích xuất kích thước...');
+    const measurements = parseMeasurementsAdvanced(extractedText);
+    console.log('Parsed measurements:', measurements);
     
-    // Compare with standards
+    // Step 5: Compare with standards
+    updateLoadingDetail('Đang so sánh với tiêu chuẩn US Size...');
     const comparison = compareMeasurements(measurements);
     
     return {
@@ -496,7 +672,8 @@ async function processImage(imageData, current, total) {
         extractedText,
         measurements,
         comparison,
-        status: comparison.isMatch ? 'match' : 'unmatch'
+        status: comparison.isMatch ? 'match' : 'unmatch',
+        confidence: comparison.confidence || 0
     };
 }
 
@@ -504,8 +681,21 @@ function loadImage(src) {
     return new Promise((resolve, reject) => {
         const img = new Image();
         img.crossOrigin = 'Anonymous';
-        img.onload = () => resolve(img);
-        img.onerror = () => reject(new Error('Không thể tải ảnh'));
+        
+        const timeout = setTimeout(() => {
+            reject(new Error('Timeout loading image'));
+        }, 30000);
+        
+        img.onload = () => {
+            clearTimeout(timeout);
+            resolve(img);
+        };
+        
+        img.onerror = () => {
+            clearTimeout(timeout);
+            reject(new Error('Không thể tải ảnh'));
+        };
+        
         img.src = src;
     });
 }
@@ -519,50 +709,103 @@ function imageToCanvas(img) {
     return canvas;
 }
 
-function enhanceImageQuality(img) {
+// ==================== ENHANCED IMAGE PROCESSING FOR ACCURATE OCR ====================
+function enhanceImageForOCR(img) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     
-    // Scale up for better OCR
-    const scale = Math.min(3, 2000 / Math.max(img.width, img.height));
+    // Scale up for better OCR (optimal is around 300 DPI)
+    const targetWidth = Math.max(img.width, 1500);
+    const scale = targetWidth / img.width;
+    
     canvas.width = img.width * scale;
     canvas.height = img.height * scale;
     
-    // Enable image smoothing
+    // High quality scaling
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    
-    // Draw scaled image
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     
-    // Get image data
+    // Get image data for processing
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
     
-    // Convert to grayscale and increase contrast
+    // Step 1: Convert to grayscale
     for (let i = 0; i < data.length; i += 4) {
-        // Grayscale
         const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        data[i] = gray;
+        data[i + 1] = gray;
+        data[i + 2] = gray;
+    }
+    
+    // Step 2: Increase contrast (adaptive)
+    const contrast = 1.8;
+    for (let i = 0; i < data.length; i += 4) {
+        let val = data[i];
+        val = ((val - 128) * contrast) + 128;
+        val = Math.max(0, Math.min(255, val));
+        data[i] = val;
+        data[i + 1] = val;
+        data[i + 2] = val;
+    }
+    
+    // Step 3: Binarization (Otsu's method approximation)
+    // Calculate histogram
+    const histogram = new Array(256).fill(0);
+    for (let i = 0; i < data.length; i += 4) {
+        histogram[Math.floor(data[i])]++;
+    }
+    
+    // Find optimal threshold
+    const total = data.length / 4;
+    let sum = 0;
+    for (let i = 0; i < 256; i++) sum += i * histogram[i];
+    
+    let sumB = 0;
+    let wB = 0;
+    let wF = 0;
+    let maxVariance = 0;
+    let threshold = 128;
+    
+    for (let i = 0; i < 256; i++) {
+        wB += histogram[i];
+        if (wB === 0) continue;
         
-        // Increase contrast
-        const contrast = 1.5;
-        let newGray = ((gray - 128) * contrast) + 128;
-        newGray = Math.max(0, Math.min(255, newGray));
+        wF = total - wB;
+        if (wF === 0) break;
         
-        // Apply threshold for cleaner text
-        const threshold = newGray > 140 ? 255 : 0;
+        sumB += i * histogram[i];
         
-        data[i] = threshold;
-        data[i + 1] = threshold;
-        data[i + 2] = threshold;
+        const mB = sumB / wB;
+        const mF = (sum - sumB) / wF;
+        
+        const variance = wB * wF * (mB - mF) * (mB - mF);
+        
+        if (variance > maxVariance) {
+            maxVariance = variance;
+            threshold = i;
+        }
+    }
+    
+    // Apply threshold
+    for (let i = 0; i < data.length; i += 4) {
+        const val = data[i] > threshold ? 255 : 0;
+        data[i] = val;
+        data[i + 1] = val;
+        data[i + 2] = val;
     }
     
     ctx.putImageData(imageData, 0, 0);
+    
+    console.log(`Image enhanced: ${canvas.width}x${canvas.height}, threshold: ${threshold}`);
+    
     return canvas;
 }
 
-async function extractTextFromImage(imageSource, current, total) {
+// ==================== HIGH ACCURACY OCR ====================
+async function extractTextWithHighAccuracy(imageSource, current, total) {
     try {
+        // Initialize Tesseract with optimal settings for size charts
         const result = await Tesseract.recognize(
             imageSource,
             'eng',
@@ -570,82 +813,144 @@ async function extractTextFromImage(imageSource, current, total) {
                 logger: info => {
                     if (info.status === 'recognizing text') {
                         const baseProgress = ((current - 1) / total) * 100;
-                        const stepProgress = (info.progress * 100) / total;
-                        updateProgress(baseProgress + stepProgress * 0.8);
+                        const stepProgress = (info.progress * 80) / total;
+                        updateProgress(baseProgress + stepProgress);
                     }
-                }
+                },
+                // Tesseract parameters for better accuracy
+                tessedit_char_whitelist: '0123456789.,-/SMLXsmlx ',
+                tessedit_pageseg_mode: '6', // Assume uniform block of text
+                preserve_interword_spaces: '1'
             }
         );
-        return result.data.text;
+        
+        const text = result.data.text;
+        const confidence = result.data.confidence;
+        
+        console.log(`OCR confidence: ${confidence}%`);
+        
+        return text;
+        
     } catch (error) {
         console.error('OCR Error:', error);
-        throw new Error('Lỗi nhận dạng text');
+        throw new Error('Lỗi nhận dạng text: ' + error.message);
     }
 }
 
-function parseMeasurements(text) {
+// ==================== ADVANCED MEASUREMENT PARSING ====================
+function parseMeasurementsAdvanced(text) {
     const measurements = {};
     const lines = text.split('\n').map(l => l.trim()).filter(l => l);
     
-    // Detect unit
+    console.log('Parsing text lines:', lines.length);
+    
+    // Detect unit (cm or inch)
     const textLower = text.toLowerCase();
-    const isCm = textLower.includes('cm') || textLower.includes('centimeter');
+    const isCm = textLower.includes('cm') || 
+                 textLower.includes('centimeter') ||
+                 textLower.includes('厘米');
     
-    // Common size patterns
-    const sizePattern = /\b(XXS|XS|S|M|L|XL|XXL|XXXL|2XL|3XL|4XL|5XL|\d{1,2})\b/gi;
+    const unit = isCm ? 'cm' : 'inch';
+    console.log('Detected unit:', unit);
     
-    // Find table-like patterns
-    // Pattern 1: "Size L 29 22 8.75" or "L: 29, 22, 8.75"
-    const tableRowPattern = /\b(XXS|XS|S|M|L|XL|XXL|XXXL|2XL|3XL|4XL|5XL)\b[\s:,]*(\d+\.?\d*)[\s,]+(\d+\.?\d*)(?:[\s,]+(\d+\.?\d*))?/gi;
+    // Multiple parsing strategies
     
+    // Strategy 1: Table row pattern - "S 27 18 8.25" or "S: 27, 18, 8.25"
+    const tablePatterns = [
+        // Pattern: Size followed by 2-4 numbers
+        /\b(XXS|XS|S|M|L|XL|XXL|XXXL|2XL|3XL|4XL|5XL)\b[\s:,.\-\/]*(\d+\.?\d*)[\s,.\-\/]+(\d+\.?\d*)(?:[\s,.\-\/]+(\d+\.?\d*))?(?:[\s,.\-\/]+(\d+\.?\d*))?/gi,
+        // Pattern with size at end
+        /(\d+\.?\d*)[\s,.\-\/]+(\d+\.?\d*)(?:[\s,.\-\/]+(\d+\.?\d*))?[\s,.\-\/]*(XXS|XS|S|M|L|XL|XXL|XXXL|2XL|3XL|4XL|5XL)\b/gi
+    ];
+    
+    // Try first pattern
     let match;
-    while ((match = tableRowPattern.exec(text)) !== null) {
+    const pattern1 = tablePatterns[0];
+    
+    while ((match = pattern1.exec(text)) !== null) {
         const size = normalizeSize(match[1]);
-        const values = [
-            parseFloat(match[2]),
-            parseFloat(match[3]),
-            match[4] ? parseFloat(match[4]) : null
-        ].filter(v => v !== null && !isNaN(v));
+        const values = [match[2], match[3], match[4], match[5]]
+            .filter(v => v !== undefined)
+            .map(v => parseFloat(v))
+            .filter(v => !isNaN(v) && v > 0 && v < 100);
         
         if (values.length >= 2) {
             const standard = SIZE_STANDARDS[currentProductType];
             const measurementKeys = standard.measurements;
             
             measurements[size] = {
-                originalUnit: isCm ? 'cm' : 'inch'
+                originalUnit: unit,
+                rawValues: values
             };
             
             values.forEach((value, idx) => {
                 if (measurementKeys[idx]) {
                     // Convert to inch if needed
-                    measurements[size][measurementKeys[idx]] = isCm ? cmToInch(value) : value;
+                    const inchValue = isCm ? cmToInch(value) : value;
+                    measurements[size][measurementKeys[idx]] = Math.round(inchValue * 100) / 100;
                 }
             });
+            
+            console.log(`Found size ${size}:`, measurements[size]);
         }
     }
     
-    // If no structured data found, try to find individual numbers
+    // Strategy 2: If no structured data found, look for labeled values
     if (Object.keys(measurements).length === 0) {
-        const allNumbers = text.match(/\d+\.?\d*/g) || [];
-        const sizes = text.match(sizePattern) || [];
+        const labelPatterns = {
+            length: /(?:length|len|chiều\s*dài|dài)[:\s]*(\d+\.?\d*)/gi,
+            width: /(?:width|wid|chest|chiều\s*rộng|rộng|ngực)[:\s]*(\d+\.?\d*)/gi,
+            sleeve: /(?:sleeve|tay|tay\s*áo)[:\s]*(\d+\.?\d*)/gi
+        };
         
-        // Try to match numbers to sizes
-        if (sizes.length > 0 && allNumbers.length >= sizes.length * 2) {
-            const standard = SIZE_STANDARDS[currentProductType];
-            const measurementKeys = standard.measurements;
+        // Find all sizes mentioned
+        const sizeMatches = text.match(/\b(XXS|XS|S|M|L|XL|XXL|XXXL|2XL|3XL|4XL|5XL)\b/gi) || [];
+        const uniqueSizes = [...new Set(sizeMatches.map(s => normalizeSize(s)))];
+        
+        if (uniqueSizes.length > 0) {
+            // Try to extract values for each measurement type
+            const extractedValues = {};
             
-            sizes.forEach((size, idx) => {
-                const normalizedSize = normalizeSize(size);
-                const startIdx = idx * measurementKeys.length;
+            Object.keys(labelPatterns).forEach(key => {
+                const pattern = labelPatterns[key];
+                let m;
+                const values = [];
+                while ((m = pattern.exec(text)) !== null) {
+                    values.push(parseFloat(m[1]));
+                }
+                if (values.length > 0) {
+                    extractedValues[key] = values;
+                }
+            });
+            
+            console.log('Extracted labeled values:', extractedValues);
+        }
+    }
+    
+    // Strategy 3: Extract all numbers and try to match by position
+    if (Object.keys(measurements).length === 0) {
+        console.log('Trying fallback number extraction...');
+        
+        const allNumbers = text.match(/\d+\.?\d*/g)?.map(n => parseFloat(n)).filter(n => n > 10 && n < 100) || [];
+        const sizes = text.match(/\b(XXS|XS|S|M|L|XL|XXL|XXXL|2XL|3XL|4XL|5XL)\b/gi) || [];
+        
+        const uniqueSizes = [...new Set(sizes.map(s => normalizeSize(s)))];
+        const standard = SIZE_STANDARDS[currentProductType];
+        const numMeasurements = standard.measurements.length;
+        
+        if (uniqueSizes.length > 0 && allNumbers.length >= uniqueSizes.length * numMeasurements) {
+            uniqueSizes.forEach((size, idx) => {
+                const startIdx = idx * numMeasurements;
                 
-                measurements[normalizedSize] = {
-                    originalUnit: isCm ? 'cm' : 'inch'
+                measurements[size] = {
+                    originalUnit: unit
                 };
                 
-                measurementKeys.forEach((key, keyIdx) => {
-                    const value = parseFloat(allNumbers[startIdx + keyIdx]);
-                    if (!isNaN(value)) {
-                        measurements[normalizedSize][key] = isCm ? cmToInch(value) : value;
+                standard.measurements.forEach((key, keyIdx) => {
+                    const value = allNumbers[startIdx + keyIdx];
+                    if (value !== undefined) {
+                        const inchValue = isCm ? cmToInch(value) : value;
+                        measurements[size][key] = Math.round(inchValue * 100) / 100;
                     }
                 });
             });
@@ -675,13 +980,14 @@ function normalizeSize(size) {
 }
 
 function cmToInch(cm) {
-    return Math.round((cm / 2.54) * 100) / 100;
+    return cm / 2.54;
 }
 
 function inchToCm(inch) {
-    return Math.round(inch * 2.54 * 100) / 100;
+    return inch * 2.54;
 }
 
+// ==================== COMPARISON WITH TOLERANCE ====================
 function compareMeasurements(extractedMeasurements) {
     const standard = SIZE_STANDARDS[currentProductType];
     const toleranceInch = cmToInch(tolerance);
@@ -691,69 +997,111 @@ function compareMeasurements(extractedMeasurements) {
         details: [],
         matchedSizes: [],
         unmatchedSizes: [],
-        totalChecked: 0
+        totalChecked: 0,
+        totalMatched: 0,
+        confidence: 0
     };
 
+    // Check if we have any data
     if (Object.keys(extractedMeasurements).length === 0) {
         comparison.isMatch = false;
         comparison.noData = true;
+        comparison.confidence = 0;
         return comparison;
     }
 
+    let totalComparisons = 0;
+    let matchedComparisons = 0;
+
     Object.entries(extractedMeasurements).forEach(([size, measurements]) => {
-        if (standard.sizes[size]) {
-            const standardMeasurements = standard.sizes[size];
-            const sizeComparison = {
-                size,
-                measurements: {},
-                isMatch: true,
-                originalUnit: measurements.originalUnit
-            };
+        // Check if this size exists in standard
+        if (!standard.sizes[size]) {
+            console.log(`Size ${size} not found in standards`);
+            return;
+        }
 
-            standard.measurements.forEach(key => {
-                if (measurements[key] !== undefined && measurements[key] !== null) {
-                    comparison.totalChecked++;
-                    const extracted = measurements[key];
-                    const standardValue = standardMeasurements[key];
-                    const diff = extracted - standardValue;
-                    const absDiff = Math.abs(diff);
-                    const isWithinTolerance = absDiff <= toleranceInch;
+        const standardMeasurements = standard.sizes[size];
+        const sizeComparison = {
+            size,
+            measurements: {},
+            isMatch: true,
+            originalUnit: measurements.originalUnit
+        };
 
-                    sizeComparison.measurements[key] = {
-                        extracted: Math.round(extracted * 100) / 100,
-                        standard: standardValue,
-                        diff: Math.round(diff * 100) / 100,
-                        isMatch: isWithinTolerance
-                    };
+        let sizeMatched = true;
 
-                    if (!isWithinTolerance) {
-                        sizeComparison.isMatch = false;
-                    }
+        standard.measurements.forEach(key => {
+            const extracted = measurements[key];
+            const standardValue = standardMeasurements[key];
+            
+            if (extracted !== undefined && extracted !== null && standardValue !== undefined) {
+                totalComparisons++;
+                comparison.totalChecked++;
+                
+                const diff = extracted - standardValue;
+                const absDiff = Math.abs(diff);
+                const isWithinTolerance = absDiff <= toleranceInch;
+                
+                if (isWithinTolerance) {
+                    matchedComparisons++;
+                    comparison.totalMatched++;
                 }
-            });
 
-            if (Object.keys(sizeComparison.measurements).length > 0) {
-                if (sizeComparison.isMatch) {
-                    comparison.matchedSizes.push(size);
-                } else {
-                    comparison.unmatchedSizes.push(size);
-                    comparison.isMatch = false;
+                sizeComparison.measurements[key] = {
+                    extracted: Math.round(extracted * 100) / 100,
+                    standard: standardValue,
+                    diff: Math.round(diff * 100) / 100,
+                    absDiff: Math.round(absDiff * 100) / 100,
+                    tolerance: Math.round(toleranceInch * 100) / 100,
+                    isMatch: isWithinTolerance,
+                    status: isWithinTolerance ? 'OK' : (diff > 0 ? 'Lớn hơn' : 'Nhỏ hơn')
+                };
+
+                if (!isWithinTolerance) {
+                    sizeMatched = false;
                 }
-                comparison.details.push(sizeComparison);
             }
+        });
+
+        if (Object.keys(sizeComparison.measurements).length > 0) {
+            sizeComparison.isMatch = sizeMatched;
+            
+            if (sizeMatched) {
+                comparison.matchedSizes.push(size);
+            } else {
+                comparison.unmatchedSizes.push(size);
+                comparison.isMatch = false;
+            }
+            
+            comparison.details.push(sizeComparison);
         }
     });
 
+    // Calculate confidence
+    if (totalComparisons > 0) {
+        comparison.confidence = Math.round((matchedComparisons / totalComparisons) * 100);
+    }
+
+    // Final determination
     if (comparison.details.length === 0) {
         comparison.isMatch = false;
         comparison.noData = true;
     }
+
+    console.log('Comparison result:', {
+        isMatch: comparison.isMatch,
+        matchedSizes: comparison.matchedSizes,
+        unmatchedSizes: comparison.unmatchedSizes,
+        confidence: comparison.confidence + '%'
+    });
 
     return comparison;
 }
 
 // ==================== DISPLAY RESULTS ====================
 function displaySummary(total, matchCount, unmatchCount) {
+    const matchPercent = Math.round((matchCount / total) * 100);
+    
     elements.resultsSummary.innerHTML = `
         <div class="summary-item total">
             <div class="number">${total}</div>
@@ -761,22 +1109,26 @@ function displaySummary(total, matchCount, unmatchCount) {
         </div>
         <div class="summary-item match">
             <div class="number">${matchCount}</div>
-            <div class="label">MATCH ✓</div>
+            <div class="label">✓ MATCH</div>
         </div>
         <div class="summary-item unmatch">
             <div class="number">${unmatchCount}</div>
-            <div class="label">UNMATCH ✗</div>
+            <div class="label">✗ UNMATCH</div>
+        </div>
+        <div class="summary-item ${matchPercent >= 80 ? 'match' : matchPercent >= 50 ? 'total' : 'unmatch'}">
+            <div class="number">${matchPercent}%</div>
+            <div class="label">Tỷ lệ khớp</div>
         </div>
     `;
 }
 
 function displayResult(result, index) {
     const measurementLabels = {
-        length: 'Length',
-        width: 'Width', 
-        sleeve: 'Sleeve',
-        waist: 'Waist',
-        inseam: 'Inseam'
+        length: 'Dài (Length)',
+        width: 'Rộng (Width)', 
+        sleeve: 'Tay (Sleeve)',
+        waist: 'Eo (Waist)',
+        inseam: 'Dài trong (Inseam)'
     };
 
     let comparisonTableHtml = '';
@@ -785,95 +1137,142 @@ function displayResult(result, index) {
         comparisonTableHtml = `
             <div class="no-data-message">
                 <i class="fas fa-exclamation-triangle"></i>
-                <p>Không thể trích xuất dữ liệu size từ ảnh này</p>
-                <small>Hãy thử upload ảnh rõ nét hơn hoặc kiểm tra lại định dạng bảng size</small>
+                <p><strong>Không thể trích xuất dữ liệu size từ ảnh này</strong></p>
+                <small>
+                    Có thể do:<br>
+                    • Ảnh không đủ rõ nét<br>
+                    • Định dạng bảng size không được hỗ trợ<br>
+                    • Text trong ảnh bị che khuất hoặc biến dạng
+                </small>
             </div>
         `;
     } else if (result.comparison.details.length > 0) {
         const standard = SIZE_STANDARDS[currentProductType];
+        const toleranceInch = cmToInch(tolerance);
         
         comparisonTableHtml = `
+            <div class="comparison-info">
+                <span class="info-badge">
+                    <i class="fas fa-ruler"></i> 
+                    Dung sai: ±${tolerance}cm (±${toleranceInch.toFixed(2)}")
+                </span>
+                <span class="info-badge">
+                    <i class="fas fa-percentage"></i>
+                    Độ tin cậy: ${result.comparison.confidence}%
+                </span>
+                <span class="info-badge">
+                    <i class="fas fa-exchange-alt"></i>
+                    Đơn vị gốc: ${result.comparison.details[0]?.originalUnit || 'inch'}
+                </span>
+            </div>
             <table class="comparison-table">
                 <thead>
                     <tr>
                         <th>Size</th>
-                        ${standard.measurements.map(m => `
-                            <th>${measurementLabels[m]}<br><small>(Đọc được)</small></th>
-                            <th>${measurementLabels[m]}<br><small>(Chuẩn US)</small></th>
-                        `).join('')}
+                        <th>Chỉ số</th>
+                        <th>Đọc được</th>
+                        <th>Chuẩn US</th>
+                        <th>Chênh lệch</th>
                         <th>Kết quả</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${result.comparison.details.map(detail => `
-                        <tr>
-                            <td class="size-col">${detail.size}</td>
-                            ${standard.measurements.map(m => {
-                                const data = detail.measurements[m];
-                                if (data) {
-                                    return `
-                                        <td class="${data.isMatch ? 'match-cell' : 'unmatch-cell'}">
-                                            ${data.extracted}"
-                                            <br><small>(${data.diff > 0 ? '+' : ''}${data.diff}")</small>
-                                        </td>
+                    ${result.comparison.details.map(detail => 
+                        standard.measurements.map((m, idx) => {
+                            const data = detail.measurements[m];
+                            if (data) {
+                                return `
+                                    <tr>
+                                        ${idx === 0 ? `<td class="size-col" rowspan="${Object.keys(detail.measurements).length}">${detail.size}</td>` : ''}
+                                        <td>${measurementLabels[m]}</td>
+                                        <td><strong>${data.extracted}"</strong></td>
                                         <td>${data.standard}"</td>
-                                    `;
-                                }
-                                return '<td>-</td><td>-</td>';
-                            }).join('')}
-                            <td class="${detail.isMatch ? 'match-cell' : 'unmatch-cell'}">
-                                ${detail.isMatch ? '✓ OK' : '✗ Lệch'}
-                            </td>
-                        </tr>
-                    `).join('')}
+                                        <td class="${data.isMatch ? '' : 'diff-highlight'}">
+                                            ${data.diff > 0 ? '+' : ''}${data.diff}"
+                                        </td>
+                                        <td class="${data.isMatch ? 'match-cell' : 'unmatch-cell'}">
+                                            ${data.isMatch ? '✓ OK' : '✗ ' + data.status}
+                                        </td>
+                                    </tr>
+                                `;
+                            }
+                            return '';
+                        }).join('')
+                    ).join('')}
                 </tbody>
             </table>
+            <div class="size-summary">
+                ${result.comparison.matchedSizes.length > 0 ? 
+                    `<span class="size-badge match">✓ Match: ${result.comparison.matchedSizes.join(', ')}</span>` : ''}
+                ${result.comparison.unmatchedSizes.length > 0 ? 
+                    `<span class="size-badge unmatch">✗ Unmatch: ${result.comparison.unmatchedSizes.join(', ')}</span>` : ''}
+            </div>
         `;
     }
 
     const resultHtml = `
-        <div class="result-item ${result.status}">
+        <div class="result-item ${result.status}" data-index="${index}">
             <div class="result-header">
                 <div class="result-header-left">
                     <img src="${result.image.src}" class="result-image" alt="Image ${index}" 
-                         onerror="this.src='https://via.placeholder.com/60?text=Error'">
-                    <h4>Ảnh #${index}: ${result.image.name.substring(0, 30)}${result.image.name.length > 30 ? '...' : ''}</h4>
+                         onerror="this.src='https://via.placeholder.com/60x60?text=Error'">
+                    <div class="result-title">
+                        <h4>Ảnh #${index}</h4>
+                        <small>${result.image.name.substring(0, 40)}${result.image.name.length > 40 ? '...' : ''}</small>
+                    </div>
                 </div>
                 <span class="result-status ${result.status}">
-                    ${result.status === 'match' ? '✓ MATCH' : '✗ UNMATCH'}
+                    ${result.status === 'match' ? '✓ MATCH' : result.status === 'error' ? '⚠ LỖI' : '✗ UNMATCH'}
                 </span>
             </div>
             
             ${comparisonTableHtml}
             
             <details class="extracted-data">
-                <summary><i class="fas fa-file-alt"></i> Xem text đọc được từ ảnh</summary>
-                <pre>${result.extractedText || 'Không đọc được text'}</pre>
+                <summary>
+                    <i class="fas fa-file-alt"></i> 
+                    Xem text đọc được từ ảnh (Debug)
+                </summary>
+                <pre>${escapeHtml(result.extractedText || 'Không đọc được text')}</pre>
             </details>
         </div>
     `;
 
     elements.resultsContainer.insertAdjacentHTML('beforeend', resultHtml);
+    
+    // Scroll to new result
+    const newResult = elements.resultsContainer.lastElementChild;
+    newResult.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function displayErrorResult(imageData, index, errorMessage) {
     const resultHtml = `
-        <div class="result-item unmatch">
+        <div class="result-item error" data-index="${index}">
             <div class="result-header">
                 <div class="result-header-left">
                     <img src="${imageData.src}" class="result-image" alt="Image ${index}" 
-                         onerror="this.src='https://via.placeholder.com/60?text=Error'">
-                    <h4>Ảnh #${index}: ${imageData.name}</h4>
+                         onerror="this.src='https://via.placeholder.com/60x60?text=Error'">
+                    <div class="result-title">
+                        <h4>Ảnh #${index}</h4>
+                        <small>${imageData.name}</small>
+                    </div>
                 </div>
-                <span class="result-status unmatch">LỖI</span>
+                <span class="result-status unmatch">⚠ LỖI</span>
             </div>
             <div class="no-data-message">
                 <i class="fas fa-exclamation-circle"></i>
-                <p>${errorMessage}</p>
+                <p><strong>Không thể xử lý ảnh này</strong></p>
+                <small>${errorMessage}</small>
             </div>
         </div>
     `;
     elements.resultsContainer.insertAdjacentHTML('beforeend', resultHtml);
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // ==================== LOADING FUNCTIONS ====================
@@ -897,7 +1296,7 @@ function updateLoadingDetail(text) {
 }
 
 function updateProgress(percent) {
-    elements.progress.style.width = `${Math.min(100, percent)}%`;
+    elements.progress.style.width = `${Math.min(100, Math.max(0, percent))}%`;
 }
 
 // ==================== TOAST NOTIFICATIONS ====================
@@ -915,24 +1314,92 @@ function showToast(message, type = 'info') {
     
     elements.toastContainer.appendChild(toast);
 
+    // Auto remove after 5 seconds
     setTimeout(() => {
         toast.style.animation = 'slideIn 0.3s ease reverse';
         setTimeout(() => toast.remove(), 300);
-    }, 4000);
+    }, 5000);
 }
 
-// ==================== UTILITY FUNCTIONS ====================
-function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
-}
-
-// Make functions globally accessible
+// ==================== MAKE FUNCTIONS GLOBAL ====================
 window.removeImage = removeImage;
+window.clearAllImages = clearAllImages;
+
+// ==================== ADDITIONAL CSS FOR NEW FEATURES ====================
+// Add these styles dynamically
+const additionalStyles = document.createElement('style');
+additionalStyles.textContent = `
+    .comparison-info {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 15px;
+        flex-wrap: wrap;
+    }
+    
+    .info-badge {
+        background: #e0e7ff;
+        color: #4338ca;
+        padding: 5px 12px;
+        border-radius: 15px;
+        font-size: 0.8rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+    
+    .size-summary {
+        margin-top: 15px;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    
+    .size-badge {
+        padding: 8px 15px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    
+    .size-badge.match {
+        background: #d1fae5;
+        color: #059669;
+    }
+    
+    .size-badge.unmatch {
+        background: #fee2e2;
+        color: #dc2626;
+    }
+    
+    .diff-highlight {
+        background: #fef3c7 !important;
+        font-weight: 600;
+    }
+    
+    .result-title {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .result-title h4 {
+        margin: 0;
+        font-size: 1rem;
+    }
+    
+    .result-title small {
+        color: #6b7280;
+        font-size: 0.75rem;
+        margin-top: 2px;
+    }
+    
+    .result-item.error {
+        border-left: 4px solid #f59e0b;
+    }
+    
+    .comparison-table tbody tr:hover {
+        background: #f9fafb;
+    }
+`;
+document.head.appendChild(additionalStyles);
+
+console.log('✅ Size Comparison Tool v2.0 - Fixed multiple upload & enhanced accuracy');
