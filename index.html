@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Size Comparison Tool - So Sánh Kích Thước</title>
+    <title>Size Comparison Tool - So Sánh Kích Thước US Size</title>
     <link rel="stylesheet" href="css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -13,7 +13,7 @@
         <!-- Header -->
         <header class="header">
             <h1><i class="fas fa-ruler-combined"></i> Size Comparison Tool</h1>
-            <p>So sánh kích thước sản phẩm với tiêu chuẩn US Size (WohWooh)</p>
+            <p>So sánh kích thước sản phẩm với tiêu chuẩn US Size (WohWooh.com)</p>
         </header>
 
         <!-- Main Content -->
@@ -21,7 +21,7 @@
             <!-- Left Panel - Upload Section -->
             <section class="upload-section">
                 <div class="card">
-                    <h2><i class="fas fa-upload"></i> Upload Size Images</h2>
+                    <h2><i class="fas fa-upload"></i> Upload Size Chart Images</h2>
                     
                     <!-- Upload Options -->
                     <div class="upload-options">
@@ -38,12 +38,12 @@
                         <div class="tab-content active" id="file-tab">
                             <div class="dropzone" id="dropzone">
                                 <i class="fas fa-cloud-upload-alt"></i>
-                                <p>Kéo thả ảnh vào đây hoặc</p>
+                                <p>Kéo thả ảnh bảng size vào đây hoặc</p>
                                 <label class="file-label">
-                                    <input type="file" id="file-input" multiple accept="image/png,image/jpeg,image/jpg">
+                                    <input type="file" id="file-input" multiple accept="image/png,image/jpeg,image/jpg,image/webp">
                                     <span class="btn btn-primary">Chọn Files</span>
                                 </label>
-                                <small>Hỗ trợ PNG, JPEG (Tối đa 5 ảnh)</small>
+                                <small>Hỗ trợ PNG, JPEG, WebP (Tối đa 5 ảnh)</small>
                             </div>
                         </div>
 
@@ -66,46 +66,33 @@
 
                     <!-- Settings -->
                     <div class="settings-section">
-                        <h3><i class="fas fa-cog"></i> Cài đặt</h3>
+                        <h3><i class="fas fa-cog"></i> Cài đặt so sánh</h3>
                         
                         <div class="setting-item">
-                            <label for="product-type">Loại sản phẩm:</label>
-                            <select id="product-type">
-                                <option value="tshirt">T-Shirt / Áo thun</option>
-                                <option value="hoodie">Hoodie / Áo hoodie</option>
-                                <option value="sweatshirt">Sweatshirt / Áo nỉ</option>
-                                <option value="tanktop">Tank Top / Áo ba lỗ</option>
-                                <option value="longsleeve">Long Sleeve / Áo dài tay</option>
-                            </select>
-                        </div>
-
-                        <div class="setting-item">
-                            <label for="tolerance">Dung sai cho phép:</label>
+                            <label for="tolerance">Dung sai cho phép (Tolerance):</label>
                             <div class="tolerance-input">
-                                <input type="number" id="tolerance" value="2" min="0" max="5" step="0.5">
-                                <span>cm (≈ <span id="tolerance-inch">0.79</span> inch)</span>
+                                <input type="number" id="tolerance" value="2" min="0" max="10" step="0.5">
+                                <span>cm (≈ <span id="tolerance-inch">0.79</span>")</span>
                             </div>
-                            <small>Size upload có thể chênh lệch ± giá trị này so với tiêu chuẩn</small>
+                            <small>Kích thước trong ảnh có thể chênh lệch ± giá trị này so với chuẩn US</small>
                         </div>
 
                         <div class="setting-item">
                             <label>
                                 <input type="checkbox" id="enhance-image" checked>
-                                Tự động làm rõ ảnh mờ (tăng độ chính xác OCR)
-                            </label>
-                        </div>
-
-                        <div class="setting-item">
-                            <label>
-                                <input type="checkbox" id="auto-detect-unit" checked>
-                                Tự động phát hiện đơn vị (CM/Inch)
+                                <span>Tự động làm rõ ảnh mờ (Khuyến nghị bật)</span>
                             </label>
                         </div>
                     </div>
 
                     <!-- Preview Section -->
                     <div class="preview-section" id="preview-section">
-                        <h3><i class="fas fa-images"></i> Ảnh đã chọn (<span id="image-count">0</span>/5)</h3>
+                        <h3>
+                            <i class="fas fa-images"></i> Ảnh đã chọn (<span id="image-count">0</span>/5)
+                            <button class="btn-clear-all" id="clear-all-btn" title="Xóa tất cả">
+                                <i class="fas fa-trash"></i> Xóa tất cả
+                            </button>
+                        </h3>
                         <div class="preview-grid" id="preview-grid"></div>
                     </div>
 
@@ -121,24 +108,33 @@
                 <!-- Standard Size Reference -->
                 <div class="card">
                     <h2><i class="fas fa-ruler"></i> Tiêu chuẩn US Size (WohWooh)</h2>
-                    <div class="standard-info">
-                        <span class="badge"><i class="fas fa-tshirt"></i> <span id="current-product-name">T-Shirt</span></span>
-                        <span class="badge"><i class="fas fa-ruler-horizontal"></i> Đơn vị: Inch</span>
-                    </div>
+                    <p class="size-note">
+                        <i class="fas fa-info-circle"></i> 
+                        Bảng size chuẩn từ <a href="https://wohwooh.com/pages/size-guide" target="_blank">wohwooh.com/pages/size-guide</a>
+                    </p>
                     <div class="standard-table-container">
                         <table class="standard-table" id="standard-table">
                             <thead>
-                                <tr id="table-header">
+                                <tr>
                                     <th>Size</th>
-                                    <th>Length (inch)</th>
-                                    <th>Width (inch)</th>
-                                    <th>Sleeve (inch)</th>
+                                    <th>Length<br><small>(Chiều dài)</small></th>
+                                    <th>Width<br><small>(Chiều rộng)</small></th>
+                                    <th>Chest<br><small>(Vòng ngực)</small></th>
+                                    <th>Sleeve<br><small>(Tay áo)</small></th>
                                 </tr>
                             </thead>
                             <tbody id="standard-tbody">
                                 <!-- Sẽ được load từ JS -->
                             </tbody>
                         </table>
+                    </div>
+                    <div class="size-info">
+                        <p><strong>Ghi chú:</strong></p>
+                        <ul>
+                            <li>Đơn vị: <strong>Inch</strong> (1 inch = 2.54 cm)</li>
+                            <li>Chest = Width × 2 (vòng ngực = chiều rộng × 2)</li>
+                            <li>Dung sai cho phép: ±<span id="tolerance-display">2</span> cm</li>
+                        </ul>
                     </div>
                     <a href="https://wohwooh.com/pages/size-guide" target="_blank" class="reference-link">
                         <i class="fas fa-external-link-alt"></i> Xem chi tiết tại WohWooh.com
@@ -158,7 +154,7 @@
 
         <!-- Footer -->
         <footer class="footer">
-            <p>Size Comparison Tool v1.0 | Tiêu chuẩn từ <a href="https://wohwooh.com/pages/size-guide" target="_blank">WohWooh.com</a></p>
+            <p>Size Comparison Tool v2.1 | Tiêu chuẩn từ <a href="https://wohwooh.com/pages/size-guide" target="_blank">WohWooh.com</a></p>
         </footer>
 
         <!-- Loading Overlay -->
@@ -178,7 +174,7 @@
     <div class="toast-container" id="toast-container"></div>
 
     <!-- Tesseract.js for OCR -->
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>
